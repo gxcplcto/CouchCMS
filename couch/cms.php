@@ -57,24 +57,17 @@
             $html = $FUNCS->file_get_contents( K_SITE_URL . '503.php' );
         }
         if( !$html ){
-            echo $FUNCS->login_header();
-            ?>
-            <div class="notice" style="margin-bottom:10px;">
-                <?php echo $FUNCS->t('back_soon'); ?>
-            </div>
-            <?php
-            echo $FUNCS->login_footer();
+            $html = $FUNCS->render( 'site_offline' );
         }
-        else{
-            echo $html;
-        }
+
+        echo $html;
         die;
     }
 
 
     class COUCH{
 
-        function invoke( $ignore_level=0 ){
+        static function invoke( $ignore_level=0 ){
             global $DB, $FUNCS, $PAGE, $AUTH, $CTX, $k_cache_file;
 
             if( $ignore_level > 0 ){
@@ -184,15 +177,22 @@
                 $DB->rollback();
 
                 if( $PAGE->err_msg == 'Page not found' ){
-                    header('HTTP/1.1 404 Not Found');
-                    header('Status: 404 Not Found');
-                    header('Content-Type: text/html; charset='.K_CHARSET );
+                    $html=''; $send_header=1;
 
-                    $html='';
-                    if( file_exists(K_SITE_DIR . '404.php') ){
-                        $html = $FUNCS->file_get_contents( K_SITE_URL . '404.php' );
+                    // HOOK: 404_not_found
+                    $FUNCS->dispatch_event( '404_not_found', array(&$html, &$send_header, 0) );
+
+                    if( !strlen(trim($html)) ){
+                        $html='';
+                        if( file_exists(K_SITE_DIR . '404.php') ){
+                            $html = $FUNCS->file_get_contents( K_SITE_URL . '404.php' );
+                        }
+                        if( !$html ) $html = 'Page not found';
                     }
-                    if( !$html ) $html = 'Page not found';
+                    if( $send_header ){
+                        header('HTTP/1.1 404 Not Found');
+                        header('Status: 404 Not Found');
+                    }
                 }
                 else{
                     die( 'ERROR: ' . $PAGE->err_msg );
@@ -273,19 +273,11 @@
                         if( $url != $canonical_url ){
                             // Redirect to canonical url
                             // append querystring params, if any
-                            $sep = '';
-                            foreach( $_GET as $qk=>$qv ){
-                                if( $qk=='p' || $qk=='f' || $qk=='d' || $qk=='fname'|| $qk=='pname' || $qk=='_nr_' ) continue;
-                                $qs .= $sep . $qk . '=' . urlencode($qv);
-                                $sep = '&';
-                            }
-                            if( $qs ) $qs = '?' . $qs;
-
                             if( $_GET['_nr_'] ){ //page link being masqueraded
-                                $redirect_url = K_SITE_URL . $PAGE->link . $qs;
+                                $redirect_url = $FUNCS->get_qs_link( K_SITE_URL . $PAGE->link );
                             }
                             else{
-                                $redirect_url = $canonical_url . $qs;
+                                $redirect_url = $FUNCS->get_qs_link( $canonical_url );
                             }
                         }
                     }
@@ -316,7 +308,7 @@
                     $_link = "
                     <div style=\"clear:both; text-align: center; z-index:99999 !important; display:block !important; visibility:visible !important;\">
                         <div style=\"position:relative; top:0; margin-right:auto;margin-left:auto; z-index:99999; display:block !important; visibility:visible !important;\">
-                        <center><a href=\"http://www.couchcms.com/\" title=\"CouchCMS - Simple Open-Source Content Management\" style=\"display:block !important; visibility:visible !important;\">Powered by CouchCMS</a></center><br />
+                        <center><a href=\"https://www.couchcms.com/\" title=\"CouchCMS - Simple Open-Source Content Management\" style=\"display:block !important; visibility:visible !important;\">Powered by CouchCMS</a></center><br />
                         </div>
                     </div>
                     ";
@@ -337,18 +329,22 @@
 
             // See if ouput needs to be cached
             if( $k_cache_file && strlen( trim($html) ) && !$PAGE->no_cache ){
-                $handle = @fopen( $k_cache_file, 'w' );
+                $handle = @fopen( $k_cache_file, 'c' );
                 if( $handle ){
                     if( $redirect_url ){
                         $pg['redirect_url'] = $redirect_url;
                     }
                     else{
                         $pg['mime_type'] = $content_type_header;
-                        $cached_html = $html . "\n<!-- Cached page";
-                        if( !K_PAID_LICENSE ){
-                            $cached_html .= " served by CouchCMS - Simple Open-Source Content Management";
+                        $cached_html = $html;
+
+                        if( strpos($content_type_header, 'html')!==false ){
+                            $cached_html .= "\n<!-- Cached page";
+                            if( !K_PAID_LICENSE ){
+                                $cached_html .= " served by CouchCMS - Simple Open-Source Content Management";
+                            }
+                            $cached_html .= " -->\n";
                         }
-                        $cached_html .= " -->\n";
                         $pg['cached_html'] = $cached_html;
 
                         if( $PAGE->err_msg == 'Page not found' ){
@@ -356,10 +352,14 @@
                         }
 
                     }
-                    @flock( $handle, LOCK_EX );
-                    @fwrite( $handle, serialize( $pg ) );
-                    @flock( $handle, LOCK_UN );
-                    @fclose( $handle );
+                    if( flock($handle, LOCK_EX) ){
+                        ftruncate( $handle, 0 );
+                        rewind( $handle );
+                        fwrite( $handle, serialize( $pg ) );
+                        fflush( $handle );
+                        flock( $handle, LOCK_UN );
+                    }
+                    fclose( $handle );
                 }
             }
 
@@ -368,14 +368,16 @@
                 die();
             }
 
-            if( !K_PAID_LICENSE ){
-                $html .= "\n<!-- Page generated by CouchCMS - Simple Open-Source Content Management";
-                $html .= " -->\n";
-            }
+            if( strpos($content_type_header, 'html')!==false ){
+                if( !K_PAID_LICENSE ){
+                    $html .= "\n<!-- Page generated by CouchCMS - Simple Open-Source Content Management";
+                    $html .= " -->\n";
+                }
 
-            if( defined('K_IS_MY_TEST_MACHINE') ){
-                $html .= "\n<!-- in: ".k_timer_stop()." -->\n";
-                $html .= "\n<!-- Queries: ".$DB->queries." -->\n";
+                if( defined('K_IS_MY_TEST_MACHINE') ){
+                    $html .= "\n<!-- in: ".k_timer_stop()." -->\n";
+                    $html .= "\n<!-- Queries: ".$DB->queries." -->\n";
+                }
             }
 
             header( $content_type_header );

@@ -40,7 +40,7 @@
     if ( !defined('K_COUCH_DIR') ) define( 'K_COUCH_DIR', str_replace( '\\', '/', dirname(realpath(__FILE__) ).'/') );
     require_once( K_COUCH_DIR.'header.php' );
 
-    if( !isset($_GET['auth']{0}) ) { ob_end_clean(); die; }
+    if( !isset($_GET['auth'][0]) ) { ob_end_clean(); die; }
 
     $data = $_GET['auth'];
     $data = str_replace( ' ', '+', $data ); // for some reason, '+' is getting converted to space in $_GET. (happens when urldecode is used on '+')
@@ -67,6 +67,14 @@
 
     // Check if access level is ok
     if( $access_level ){
+        if( $access_level[0]==='i' ){ // user_id
+            $user_id = substr( $access_level, 1 );
+            $access_level = $AUTH->user->access_level;
+            if( $AUTH->user->id != $user_id ){
+                $access_level += 10; // fails the ensuing check
+            }
+        }
+
         $AUTH->check_access( $access_level, !$prompt_login );
     }
 
@@ -106,6 +114,7 @@
             'dll' => 'application/octet-stream',
             'dms' => 'application/octet-stream',
             'doc' => 'application/msword',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             'dvi' => 'application/x-dvi',
             'dxr' => 'application/x-director',
             'eps' => 'application/postscript',
@@ -141,6 +150,7 @@
             'movie' => 'video/x-sgi-movie',
             'mp2' => 'audio/mpeg',
             'mp3' => 'audio/mpeg',
+            'mp4' => 'video/mp4',
             'mpe' => 'video/mpeg',
             'mpeg' => 'video/mpeg',
             'mpg' => 'video/mpeg',
@@ -159,6 +169,7 @@
             'pnm' => 'image/x-portable-anymap',
             'ppm' => 'image/x-portable-pixmap',
             'ppt' => 'application/vnd.ms-powerpoint',
+            'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
             'ps' => 'application/postscript',
             'qt' => 'video/quicktime',
             'ra' => 'audio/x-realaudio',
@@ -189,6 +200,7 @@
             'src' => 'application/x-wais-source',
             'sv4cpio' => 'application/x-sv4cpio',
             'sv4crc' => 'application/x-sv4crc',
+            'svg' => 'image/svg+xml',
             'swf' => 'application/x-shockwave-flash',
             't' => 'application/x-troff',
             'tar' => 'application/x-tar',
@@ -205,6 +217,7 @@
             'vcd' => 'application/x-cdlink',
             'vrml' => 'model/vrml',
             'wav' => 'audio/x-wav',
+            'webm' => 'video/webm',
             'wbmp' => 'image/vnd.wap.wbmp',
             'wbxml' => 'application/vnd.wap.wbxml',
             'wml' => 'text/vnd.wap.wml',
@@ -216,6 +229,7 @@
             'xht' => 'application/xhtml+xml',
             'xhtml' => 'application/xhtml+xml',
             'xls' => 'application/vnd.ms-excel',
+            'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'xml' => 'text/xml',
             'xpm' => 'image/x-xpixmap',
             'xsl' => 'text/xml',

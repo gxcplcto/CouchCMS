@@ -40,26 +40,32 @@
     // UDF for secure file upload
     class SecureFile extends KUserDefinedField{
 
-        function SecureFile( $row, &$page, &$siblings ){
+        function __construct( $row, &$page, &$siblings ){
             global $FUNCS;
 
             // call parent
-            parent::KUserDefinedField( $row, $page, $siblings );
+            parent::__construct( $row, $page, $siblings );
 
-            $this->orig_data = array();
+            $this->orig_data = $this->data = array();
             $this->requires_multipart = 1;
         }
 
-        function handle_params( $params ){
-            global $FUNCS, $AUTH;
+        static function handle_params( $params ){
+            global $AUTH;
             if( $AUTH->user->access_level < K_ACCESS_LEVEL_SUPER_ADMIN ) return;
+
+            return SecureFile::_handle_params( $params );
+        }
+
+        static function _handle_params( $params ){
+            global $FUNCS;
 
             // Default values for params
             $default_allowed_ext = array(
                                  '7z', 'aiff', 'asf', 'avi', 'bmp', 'csv', 'doc', 'docx', 'fla', 'flv', 'gif', 'gz', 'gzip', 'jpeg', 'jpg',
-                                 'mid', 'mov', 'mp3', 'mp4', 'mpc', 'mpeg', 'mpg', 'ods', 'odt', 'pdf', 'png', 'ppt', 'pxd', 'qt',
-                                 'ram', 'rar', 'rm', 'rmi', 'rmvb', 'rtf', 'sdc', 'sitd', 'swf', 'sxc', 'sxw', 'tar', 'tgz', 'tif',
-                                 'tiff', 'txt', 'vsd', 'wav', 'wma', 'wmv', 'xls', 'xml', 'zip'
+                                 'mid', 'mov', 'mp3', 'mp4', 'mpc', 'mpeg', 'mpg', 'ods', 'odt', 'pdf', 'png', 'ppt', 'pptx', 'pxd', 'qt',
+                                 'ram', 'rar', 'rm', 'rmi', 'rmvb', 'rtf', 'sdc', 'sitd', 'svg', 'swf', 'sxc', 'sxw', 'tar', 'tgz', 'tif',
+                                 'tiff', 'txt', 'vsd', 'wav', 'webm', 'wma', 'wmv', 'xls', 'xlsx', 'xml', 'zip'
                                 );
             $default_max_size = 512; // in KB
             $default_max_width = 2048;
@@ -138,7 +144,7 @@
         }
 
         // Output to admin panel
-        function _render( $input_name, $input_id, $extra='' ){
+        function _render( $input_name, $input_id, $extra='', $dynamic_insertion=0 ){
             global $FUNCS, $CTX;
 
             if( $this->data['file_id'] ){
@@ -161,12 +167,12 @@
                 if( defined('K_ADMIN') ){
                     $data = $this->data['file_id'] . '|0|0|0|0|2|0|0';
                     $link = K_ADMIN_URL . 'download.php?auth=' . urlencode( $data . '|' . $FUNCS->hash_hmac($data, $FUNCS->hash_hmac($data, $FUNCS->get_secret_key())) );
-                    $html .= '<span id="file_name_' . $input_id . '" name="file_name_'. $input_name .'"><a href="'.$link.'">'.$this->data['file_name'].'</a></span>&nbsp;';
+                    $html .= '<span class="sf_filename" id="file_name_' . $input_id . '" name="file_name_'. $input_name .'"><a href="'.$link.'">'.$this->data['file_name'].'</a></span>&nbsp;';
                 }
                 else{
-                    $html .= '<span id="file_name_' . $input_id . '" name="file_name_'. $input_name .'">'.$this->data['file_name'].'</span>&nbsp;';
+                    $html .= '<span class="sf_filename" id="file_name_' . $input_id . '" name="file_name_'. $input_name .'">'.$this->data['file_name'].'</span>&nbsp;';
                 }
-                $html .= '<input type="submit" name="delete_'.$input_name.'" value="'.$delete_caption.'" />';
+                $html .= '<input type="submit" class="sf_btn" name="delete_'.$input_name.'" value="'.$delete_caption.'" />';
                 $html .= '<input type="hidden" name="secure_file_id_'.$input_name.'" value="'.$this->data['file_id'].'" />';
                 $html .= '<input type="hidden" name="secure_file_name_'.$input_name.'" value="'.$this->data['file_name'].'" />';
                 $html .= '<input type="hidden" name="secure_file_ext_'.$input_name.'" value="'.$this->data['file_ext'].'" />';
@@ -179,8 +185,8 @@
             else{
                 $submit_caption = $this->submit_caption;
                 $style = '';
-                $html .= '<input id="' . $input_id . '" name="'. $input_name .'" style="'.$style.'" '.$extra.' type="file" />';
-                $html .= '<input type="submit" name="submit_'.$input_name.'" value="'.$submit_caption.'"';
+                $html .= '<input id="' . $input_id . '" name="'. $input_name .'" style="'.$style.'" '.$extra.' type="file" class="sf_fileinput" />';
+                $html .= '<input type="submit" class="sf_btn" name="submit_'.$input_name.'" value="'.$submit_caption.'"';
                 if( !$this->show_submit )  $html .= ' style="display:none;"';
                 $html .= ' />';
             }
@@ -189,22 +195,24 @@
         }
 
         // Output to front-end via $CTX
-        function get_data(){
+        function get_data( $for_ctx=0 ){
             global $CTX;
 
-            // Data not a simple string hence
-            // we'll store it into '_obj_' of CTX directly
-            // to be used by the auxilally tag which knows how to display it
-            $CTX->set_object( $this->name, $this->orig_data );
+            if( $for_ctx ){
+                // Data not a simple string hence
+                // we'll store it into '_obj_' of CTX directly
+                // to be used by the auxilally tag which knows how to display it
+                $CTX->set_object( $this->name, $this->data );
+            }
 
-            // and return nothing for the normal context
-            return;
+            // and return only status for the normal context
+            return ( count($this->data) ? 1 : 0 );
         }
 
         // Handle posted data
         function store_posted_changes( $post_val ){
             global $FUNCS;
-            if( $this->deleted ) return; // no need to store
+            if( $this->deleted || $this->k_inactive ) return; // no need to store
 
             $secure_file_id = $this->_get_input_name( 'secure_file_id' );
             if( isset($_POST[$secure_file_id]) ){ // existing attachment
@@ -251,14 +259,15 @@
 
         function validate(){
             global $FUNCS;
-
-            if( $this->required && !$this->data['file_id'] ){
-                $this->err_msg = $FUNCS->t('required_msg');
-                return false;
-            }
+            if( $this->deleted || $this->k_inactive ) return true;
 
             if( $this->err_msg_refresh ){
                 $this->err_msg = $this->err_msg_refresh;
+                return false;
+            }
+
+            if( $this->required && !$this->data['file_id'] ){
+                $this->err_msg = $FUNCS->t('required_msg');
                 return false;
             }
             return true;
@@ -416,6 +425,7 @@
                 }
                 // ..check the permissible dimensions
                 if( $info[0]>$this->max_width || $info[1]>$this->max_height ){
+                    @unlink( $dest_file_path );
                     return $FUNCS->raise_error( 'The dimensions of image exceed the permitted '.$this->max_width.'px X '.$this->max_height.'px' );
                 }
 
@@ -527,13 +537,13 @@
             return $input_name .'f_'.$this->name;
         }
 
-        function _is_image( $file_ext ){
+        static function _is_image( $file_ext ){
             return in_array( $file_ext, array('jpg', 'jpeg', 'png', 'gif') );
         }
 
         //////
         // Handles 'cms:show_securefile' tag
-        function show_handler( $params, $node ){
+        static function show_handler( $params, $node ){
             global $FUNCS, $CTX, $DB;
             if( !count($node->children) ) return;
 
@@ -579,6 +589,46 @@
                 return $html;
             }
         }
+
+        // Handles 'cms:securefile_link' tag
+        static function link_handler( $params, $node ){
+            global $FUNCS, $DB, $Config;
+            if( count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
+
+            extract( $FUNCS->get_named_vars(
+                        array(
+                              'id'=>'',
+                              'thumbnail'=>'0',
+                              'physical_path'=>'0',
+                              ),
+                        $params)
+                   );
+
+            $id = trim( $id );
+            if( !$FUNCS->is_non_zero_natural($id) ) return;
+            $is_thumb = ( $thumbnail==1 ) ? 1 : 0;
+            $physical_path = ( $physical_path==1 ) ? 1 : 0;
+
+            $link = '';
+            $rs = $DB->select( K_TBL_ATTACHMENTS, array('file_real_name', 'file_disk_name','file_extension'), "attach_id='" . $DB->sanitize( $id ). "'" );
+            if( count($rs) ){
+                $file_name = $rs[0]['file_disk_name'];
+                if( $is_thumb ) $file_name .= '_t';
+                $file_name .= '.' . $rs[0]['file_extension'];
+
+                if( $physical_path ){
+                    $link = $Config['UserFilesAbsolutePath'] . 'attachments/';
+                }
+                else{
+                    $link = $Config['k_append_url'] . $Config['UserFilesPath'] . 'attachments/';
+                }
+
+                $link .= $file_name;
+            }
+
+            return $link;
+        }
     }
     $FUNCS->register_udf( 'securefile', 'SecureFile', 0/*repeatable*/ );
     $FUNCS->register_tag( 'show_securefile', array('SecureFile', 'show_handler'), 1, 0 ); // The helper tag that shows the variables via CTX
+    $FUNCS->register_tag( 'securefile_link', array('SecureFile', 'link_handler'), 0, 0 ); // outputs link to the physical file

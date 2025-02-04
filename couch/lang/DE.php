@@ -9,10 +9,10 @@
 
     // Header
     $t['greeting'] = 'Hallo';
-    $t['view_site'] = 'Seite ansehen';
+    $t['view_site'] = 'Zeige Site';
     $t['logout'] = 'Abmelden';
     $t['javascript_msg'] = 'JavaScript ist deaktiviert oder wird von Ihrem Browser nicht unterst&uuml;tzt.<br/>
-                            Bitte aktualisieren Sie Ihren Browser oder <a title="aktivieren Sie JavaScript in Ihrem Browser" href="http://www.google.com/support/bin/answer.py?answer=23852"><b>aktivieren Sie JavaScript</b></a> um das Admin Panel zu verwenden.';
+                            Bitte aktualisieren Sie Ihren Browser oder <a href="https://support.google.com/answer/23852" target="_blank">aktivieren Sie JavaScript</a> um das Admin Panel zu verwenden.';
     $t['add_new'] = 'Hinzuf&uuml;gen';
     $t['add_new_page'] = 'Neue Seite';
     $t['add_new_user'] = 'Neuer Benutzer';
@@ -64,7 +64,7 @@
     $t['title_desc'] = 'Lassen Sie dieses Feld leer um den vom System generierten Titel zu verwenden';
     $t['required'] = 'ben&ouml;tigt'; // Required field
     $t['required_msg'] = 'Ben&ouml;tigtes Feld kann nicht leer gelassen werden';
-    $t['browse_server'] = 'Server durchsuchen';
+    $t['browse_server'] = 'Dateiliste';
     $t['view_image'] = 'Bild ansehen';
     $t['thumb_created_auto'] = 'Wird automatisch generiert';
     $t['recreate'] = 'Neu generieren';
@@ -199,7 +199,7 @@
     $t['template'] = 'Template';
     $t['modified'] = 'Modifiziert'; // Date of last modification
     $t['preview'] = 'Vorschau';
-    $t['confirm_delete_draft'] = 'Sind Sie sicher, dass Sie den Entwurf l&ouml;schen m&ouml;chten?';
+    $t['confirm_delete_draft'] = 'Sind Sie sicher, dass Sie den Entwurf l&ouml;schen m&ouml;chten'; // No question mark please
     $t['confirm_delete_selected_drafts'] = 'Sind Sie sicher, dass Sie die ausgew&auml;hlten Entw&uuml;rfe l&ouml;schen m&ouml;chten?';
     $t['confirm_apply_selected_drafts'] = 'Sind Sie sicher, dass Sie die ausgew&auml;hlten Entw&uuml;rfe anwenden m&ouml;chten?';
     $t['view_all_drafts'] = 'Zeige alle Entw&uuml;rfe';

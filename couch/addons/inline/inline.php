@@ -1,11 +1,11 @@
 <?php
 
     if ( !defined('K_COUCH_DIR') ) die(); // cannot be loaded directly
-    define( 'K_INLINE_BUILD', '20140106h' );
+    define( 'K_INLINE_BUILD', '20250122i' );
 
     class Inline{
 
-        function load_edit_handler( $params, $node ){
+        static function load_edit_handler( $params, $node ){
             global $AUTH, $FUNCS, $CTX;
             if( ($AUTH->user->access_level < K_ACCESS_LEVEL_ADMIN) || $CTX->get('k_disable_edit') ) return;
 
@@ -31,7 +31,7 @@
             <link rel="stylesheet" href="<?php echo $css_link; ?>" />
             <?php
             if( !$skip_ckeditor ){
-                require_once( K_COUCH_DIR.'addons/inline/view/scripts.php' );
+                require_once( K_ADDONS_DIR.'inline/theme/scripts.php' );
             }
             else{
                 $CTX->set( 'k_disable_inline_edit', '1', 'global' );
@@ -42,13 +42,13 @@
             return $html;
         }
 
-        function no_edit_handler( $params, $node ){
+        static function no_edit_handler( $params, $node ){
             global $CTX;
 
             $CTX->set( 'k_disable_edit', '1', 'global' );
         }
 
-        function inline_handler( $params, $node ){
+        static function inline_handler( $params, $node ){
             global $CTX, $FUNCS, $AUTH;
             if( ($AUTH->user->access_level < K_ACCESS_LEVEL_ADMIN) || $CTX->get('k_disable_edit') ) return;
 
@@ -62,6 +62,9 @@
                     'custom_styles'=>'',
                     'class'=>'',
                     'url_only'=>'0', /* for cms:inline_link */
+                    'responsive'=>'0', /* for cms:popup_edit */
+                    'width'=>'0',      /* -do- */
+                    'height'=>'0',     /* -do- */
                 ),
                 $params)
             );
@@ -81,6 +84,9 @@
             $class = trim( $class );
             if( strlen($class) ) $class = ' ' . $class;
             $url_only = ( trim($url_only)==1 ) ? 1 : 0;
+            $responsive = ( $node->name=='popup_edit_ex' ) ? 1 : ( (trim($responsive)==1) ? 1 : 0 );
+            $width = ( $FUNCS->is_non_zero_natural($width) ) ? intval( $width ) : ( ($responsive && (trim($width)=='full') ) ? "'none'" : 795 );
+            $height = ( $FUNCS->is_non_zero_natural($height) ) ? intval( $height ) : ( ($responsive && (trim($height)=='full') ) ? "'none'" : 535 );
 
             // get page_id (return if used in context of list_view)
             if( $CTX->get('k_is_page') ){
@@ -98,10 +104,15 @@
             $nonce = $FUNCS->create_nonce( 'edit_page_' . $obj_id );
 
             // create link
-            $url = K_ADMIN_URL."addons/inline/index.php?act=edit&tpl=".$tpl_id."&p=".$page_id."&nonce=".$nonce."&flist=".$fields;
-            $onclick = "TINY.box.show({iframe:'".$url."',animate:false,width:795,height:535,boxid:'k_inline',modal:1});";
+            $url = K_ADMIN_URL.K_ADMIN_PAGE."?o=inline&q=edit&tpl=".$tpl_id."&p=".$page_id."&nonce=".$nonce."&flist=".$fields;
+            if( $responsive ){
+                $onclick = "TINY2.box.show({iframe:'".$url."',width:".$width.",height:".$height.",boxid:'k_inline'});";
+            }
+            else{
+                $onclick = "TINY.box.show({iframe:'".$url."',animate:false,width:795,height:535,boxid:'k_inline',modal:1});";
+            }
             if( !$CTX->get('k_disable_inline_edit') ){
-                $onclick = "if(window.CKEDITOR && window.CKEDITOR.k_regions){for(var i=0;i<window.CKEDITOR.k_regions.length;i++){if(window.CKEDITOR.k_regions[i].checkDirty()){alert( '".$prompt_text."' );window.CKEDITOR.k_regions[i].focus();return false;}}}" . $onclick;
+                $onclick = "TINY.checkDirty('".$prompt_text."');" . $onclick;
             }
 
             if( $node->name=='inline_link' ){
@@ -119,7 +130,7 @@
                 if( strlen($custom_styles) ){
                     list( $custom_style_name, $custom_style_file ) = array_map( "trim", explode( '=', $custom_styles ) );
                     if( strpos($custom_style_file, '://')===false ){
-                        $custom_style_file = K_SITE_URL . (( $custom_style_file{0}=='/' ) ? substr($custom_style_file, 1) : $custom_style_file);
+                        $custom_style_file = K_SITE_URL . (( $custom_style_file[0]=='/' ) ? substr($custom_style_file, 1) : $custom_style_file);
                     }
                     $custom_styles = $custom_style_name . ':' . $custom_style_file;
                     $html .= "data-k-custom-styles='$custom_styles' ";
@@ -132,7 +143,7 @@
             return $html;
         }
 
-        function _toolbar( $str_toolbar ){
+        static function _toolbar( $str_toolbar ){
 
             if( $str_toolbar ){
                 $available_buttons = array(
@@ -213,10 +224,37 @@
             return '[' . $str_tb_buttons  . $row_sep . '["inlinesave"]]';
         }
 
+        static function register_admin_routes(){
+            global $FUNCS, $DB;
+
+            $route = array(
+                'name'=>'edit',
+                'path'=>'edit',
+                'include_file'=>K_ADDONS_DIR.'inline/inline_ex.php',
+                'class'=> 'InlineEx',
+                'action'=>'edit_action',
+                'module'=>'inline', /* owner module of this route */
+            );
+
+            $FUNCS->register_route( 'inline', $route );
+        }
+
+        // renderable theme functions
+        static function register_renderables(){
+            global $FUNCS;
+
+            $FUNCS->register_render( 'inline_content_form', array('template_path'=>K_ADDONS_DIR.'inline/theme/') );
+        }
+
     } // end class
 
     $FUNCS->register_tag( 'load_edit', array('Inline', 'load_edit_handler') );
     $FUNCS->register_tag( 'no_edit', array('Inline', 'no_edit_handler') );
     $FUNCS->register_tag( 'popup_edit', array('Inline', 'inline_handler') );
+    $FUNCS->register_tag( 'popup_edit_ex', array('Inline', 'inline_handler') );
     $FUNCS->register_tag( 'inline_edit', array('Inline', 'inline_handler') );
     $FUNCS->register_tag( 'inline_link', array('Inline', 'inline_handler') );
+    if( defined('K_ADMIN') ){
+        $FUNCS->add_event_listener( 'register_admin_routes',  array('Inline', 'register_admin_routes') );
+    }
+    $FUNCS->add_event_listener( 'register_renderables',  array('Inline', 'register_renderables') );

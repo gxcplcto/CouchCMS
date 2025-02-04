@@ -8,7 +8,7 @@
         var $obj_routes = array();
         var $cache_key = 'k_cached_routes';
 
-        function KRoutes(){
+        function __construct(){
             global $FUNCS;
 
             $cache_value = @unserialize( base64_decode($FUNCS->get_setting($this->cache_key)) );
@@ -289,7 +289,7 @@
                                     <cms:php>global \$CTX; \$CTX->set( 'rs', trim(\$CTX->get('rs')) ); </cms:php>
 
                                     <cms:if rs >
-                                        <cms:abort rs is_404 />
+                                        <cms:abort rs '$is_404' />
                                     </cms:if>
                                 ";
 

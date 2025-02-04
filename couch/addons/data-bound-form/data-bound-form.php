@@ -40,14 +40,14 @@
     class KDataBoundForm{
 
         // Saves Data Bound Forms ('db_persist' tag also piggy-backs on this)
-        function db_persist_form( $params, $node ){
+        static function db_persist_form( $params, $node ){
             global $FUNCS, $DB, $CTX, $AUTH;
             if( $node->name=='db_persist_form' && count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
 
             // handle params
-            $arr_known_params = array( '_invalidate_cache'=>'0', '_auto_title'=>'0' );
+            $arr_known_params = array( '_invalidate_cache'=>'0', '_auto_title'=>'0', '_token'=>'', '_fields'=>'' );
             if( $node->name=='db_persist' ){
-                $arr_known_params = array_merge( $arr_known_params, array('_masterpage'=>'', '_mode'=>'', '_page_id'=>'', '_separator'=>'|', '_set_errors_in_context'=>'0') );
+                $arr_known_params = array_merge( $arr_known_params, array('_masterpage'=>'', '_mode'=>'', '_page_id'=>'', '_separator'=>'|', '_set_errors_in_context'=>'0', '_sub_template'=>'') );
             }
             extract( $FUNCS->get_named_vars(
                         $arr_known_params,
@@ -55,16 +55,18 @@
                   );
             $_invalidate_cache = ( $_invalidate_cache==1 ) ? 1 : 0;
             $_auto_title = ( $_auto_title==1 ) ? 1 : 0;
+            $_token = trim( $_token  );
             $_set_errors_in_context = ( $_set_errors_in_context==1 ) ? 1 : 0;
+            $_fields = ( is_array($_fields) ) ? $_fields : array();
 
             // get down to business
             if( $node->name=='db_persist_form' ){
                 // can only be used used within a data-bound form.. page object wlll be provided by the form
-                $pg = &$CTX->get_object( 'bound_page', 'form' );
+                $pg = &$CTX->get_object( 'k_bound_page', 'form' );
                 if( is_null($pg) ){
                     die("ERROR: Tag \"".$node->name."\" needs to be within a Data-bound form");
                 }
-                $_mode = ( $pg->id==-1 ) ? 'create' : 'edit';
+                $_mode = ( $pg->id==-1 || is_null($pg->id) ) ? 'create' : 'edit';
             }
             else{
                 // get the page object
@@ -77,28 +79,65 @@
                     die( "ERROR: Tag \"".$node->name."\" - unknown value for 'mode' parameter (only 'edit' and 'create' supported)" );
                 }
 
-                $rs = $DB->select( K_TBL_TEMPLATES, array('id', 'clonable'), "name='" . $DB->sanitize( $_masterpage ). "'" );
-                if( !count($rs) ){
-                    die( "ERROR: Tag \"".$node->name."\" - _masterpage does not exist" );
-                }
-
-                if( $_mode=='edit' ){
-                    $_page_id = ( isset($_page_id) && $FUNCS->is_non_zero_natural($_page_id) ) ? (int)$_page_id : null;
-                    if( $rs[0]['clonable'] && !$_page_id ){
-                        die( "ERROR: Tag \"".$node->name."\" - _page_id required" );
+                if( $FUNCS->is_spl_template( $_masterpage ) ){
+                    $pg = $FUNCS->handle_spl_template( $_masterpage, array($_page_id, '', &$_mode) );
+                    if( $pg->error ){
+                        die( "ERROR: Tag \"".$node->name."\" - " . $pg->err_msg );
                     }
                 }
                 else{
-                    if( !$rs[0]['clonable'] ){
-                        die( "ERROR: Tag \"".$node->name."\" - cannot create page of non-clonable template" );
+                    $sub_tpl_id = null;
+                    $rs = $DB->select( K_TBL_TEMPLATES, array('id', 'clonable'), "name='" . $DB->sanitize( $_masterpage ). "'" );
+                    if( !count($rs) ){
+                        die( "ERROR: Tag \"".$node->name."\" - _masterpage does not exist" );
                     }
-                    $_page_id = -1;
+
+                    if( $_mode=='edit' ){
+                        $_page_id = ( isset($_page_id) && $FUNCS->is_non_zero_natural($_page_id) ) ? (int)$_page_id : null;
+                        if( $rs[0]['clonable'] && !$_page_id ){
+                            die( "ERROR: Tag \"".$node->name."\" - _page_id required" );
+                        }
+                    }
+                    else{
+                        if( !$rs[0]['clonable'] ){
+                            die( "ERROR: Tag \"".$node->name."\" - cannot create page of non-clonable template" );
+                        }
+                        $_page_id = -1;
+
+                        $_sub_template = trim( $_sub_template );
+                        if( $_sub_template ){
+                            if( class_exists('KSubTemplates') ){
+                                $rs2 = $DB->select( K_TBL_PAGES.' p INNER JOIN '.K_TBL_TEMPLATES.' t ON p.template_id = t.id', array('p.id'), "t.name='".$DB->sanitize( KSubTemplates::_get_aux_tpl_name($_masterpage) )."' AND page_name='".$DB->sanitize( $_sub_template )."'" );
+                                if( !count($rs2) ){  die( "ERROR: Tag \"".$node->name."\" - sub_template not found" ); }
+                                $sub_tpl_id = $rs2[0]['id'];
+                            }
+                        }
+                    }
+
+                    if( $sub_tpl_id ){
+                        $listener_get_sub_template = function(&$subtpl_id) use($sub_tpl_id){
+                            $subtpl_id = $sub_tpl_id;
+                        };
+                        $FUNCS->add_event_listener( 'get_sub_template_of_new_page', $listener_get_sub_template );
+                    }
+
+                    $pg = new KWebpage( $rs[0]['id'], $_page_id );
+                    if( $pg->error ){
+                        die( "ERROR: Tag \"".$node->name."\" - " . $pg->err_msg );
+                    }
+
+                    if( $sub_tpl_id ){
+                        $f = &$pg->_fields[KSubTemplates::subtpl_selector];
+                        if( $f ){
+                            $f->store_posted_changes( $sub_tpl_id );
+                            $f->not_active = array( 'code'=>array(new KNode(K_NODE_TYPE_TEXT, '', '', '1')), 'params'=>array() );
+                        }
+                        unset( $f );
+
+                        $FUNCS->remove_event_listener( 'get_sub_template_of_new_page', $listener_get_sub_template );
+                    }
                 }
 
-                $pg = new KWebpage( $rs[0]['id'], $_page_id );
-                if( $pg->error ){
-                    die( "ERROR: Tag \"".$node->name."\" - " . $pg->err_msg );
-                }
                 $count = count( $pg->fields );
                 for( $x=0; $x<$count; $x++ ){
                     $f = &$pg->fields[$x];
@@ -108,58 +147,116 @@
             }
 
             // gather static values provided as parameters of this tag
-            $fields = array();
+            $fields = count( $_fields ) ? $_fields : array();
             foreach( $params as $param ){
                 $pname = strtolower( trim($param['lhs']) );
                 if( array_key_exists($pname, $arr_known_params) ) continue;
                 $fields[$pname]=$param['rhs'];
             }
-            if( count($fields) ){
+
+            // HOOK: db_xxx_alter_fields
+            if( $_token ){
+                $FUNCS->dispatch_event( $node->name.'_alter_fields_'.$_token, array(&$pg, &$fields, $_mode, $params, $node) );
+            }
+
+            if( $node->name=='db_persist' && $pg instanceof KWebpage ){
                 for( $x=0; $x<count($pg->fields); $x++ ){
                     $f = &$pg->fields[$x];
-                    if( isset($fields[$f->name]) ){
-                        if( $f->k_type== 'checkbox' ){
-                            // supplied static checkbox values are supposed to be comma-separated -
-                            // this needs to be changed to match the separator expected by page-field
-                            $separator = ( $f->k_separator ) ? $f->k_separator : '|';
-                            $sep = '';
-                            $str_val = '';
-                            $fields[$f->name] = explode(',', $fields[$f->name]);
-                            foreach( $fields[$f->name] as $v ){
-                                $str_val .= $sep . trim( $v );
-                                $sep = $separator;
+                    if( $f->not_active ){
+                        $f->k_inactive = !$FUNCS->resolve_active_without_form( $f, $pg );
+                    }
+                    unset( $f );
+                }
+            }
+
+            if( count($fields) ){
+                if( $pg instanceof KWebpage ){
+                    foreach( $fields as $key=>$val ){
+                        if( array_key_exists($key, $pg->_fields) ){
+                            $f = &$pg->_fields[$key];
+
+                            if( $node->name=='db_persist' && $f->not_active ){
+                                $f->k_inactive = !$FUNCS->resolve_active_without_form( $f, $pg );
                             }
-                            $f->store_posted_changes( $str_val );
-                        }
-                        else{
-                            $f->store_posted_changes( $fields[$f->name] );
+
+                            if( $f->k_type== 'checkbox' ){
+                                // supplied static checkbox values are supposed to be comma-separated -
+                                // this needs to be changed to match the separator expected by page-field
+                                $separator = ( $f->k_separator ) ? $f->k_separator : '|';
+                                $sep = '';
+                                $str_val = '';
+                                $val = explode(',', $val);
+                                foreach( $val as $v ){
+                                    $str_val .= $sep . trim( $v );
+                                    $sep = $separator;
+                                }
+                                $f->store_posted_changes( $str_val );
+                            }
+                            else{
+                                $f->store_posted_changes( $val, $node->name );
+                            }
                         }
                     }
-                    unset( $f );
+                }
+                else{
+                    for( $x=0; $x<count($pg->fields); $x++ ){
+                        $f = &$pg->fields[$x];
+                        if( isset($fields[$f->name]) ){
+                            if( $f->k_type== 'checkbox' ){
+                                // supplied static checkbox values are supposed to be comma-separated -
+                                // this needs to be changed to match the separator expected by page-field
+                                $separator = ( $f->k_separator ) ? $f->k_separator : '|';
+                                $sep = '';
+                                $str_val = '';
+                                $fields[$f->name] = explode(',', $fields[$f->name]);
+                                foreach( $fields[$f->name] as $v ){
+                                    $str_val .= $sep . trim( $v );
+                                    $sep = $separator;
+                                }
+                                $f->store_posted_changes( $str_val );
+                            }
+                            else{
+                                $f->store_posted_changes( $fields[$f->name], $node->name );
+                            }
+                        }
+                        unset( $f );
+                    }
                 }
             }
 
-            // _auto_title
-            // if creating a new page and both title and name not set, create a random title
-            // This will also create a random name using the title when the page is saved
-            if( $_mode=='create' && $_auto_title ){
-                if( trim($pg->_fields['k_page_name']->get_data())=='' ){ // name
-                    $f = &$pg->_fields['k_page_title']; // title
-                    if( trim($f->get_data())=='' ){
-                        $f->store_posted_changes( md5($AUTH->hasher->get_random_bytes(16)) );
+            if( $pg instanceof KWebpage ){
+                // _auto_title
+                // if creating a new page and both title and name not set, create a random title
+                // This will also create a random name using the title when the page is saved
+                if( $_mode=='create' && $_auto_title ){
+                    if( trim($pg->_fields['k_page_name']->get_data())=='' ){ // name
+                        $f = &$pg->_fields['k_page_title']; // title
+                        if( trim($f->get_data())=='' ){
+                            $f->store_posted_changes( md5($AUTH->hasher->get_random_bytes(16)) );
+                        }
+                        unset( $f );
                     }
-                    unset( $f );
                 }
+
+                $f = &$pg->_fields['k_publish_date']; // k_publish_date
+                if( !$f->get_data() ){
+                    $f->store_posted_changes( $FUNCS->get_current_desktop_time() );
+                }
+                unset( $f );
             }
 
-            $f = &$pg->_fields['k_publish_date']; // k_publish_date
-            if( !$f->get_data() ){
-                $f->store_posted_changes( $FUNCS->get_current_desktop_time() );
+            // HOOK: db_xxx_presave
+            if( $_token ){
+                $FUNCS->dispatch_event( $node->name.'_presave_'.$_token, array(&$pg, $_mode, $params, $node) );
             }
-            unset( $f );
 
             // Save..
-            $errors = $pg->save();
+            $errors = $pg->save( $node->name );
+
+            // HOOK: db_xxx_postsave
+            if( $_token ){
+                $FUNCS->dispatch_event( $node->name.'_postsave_'.$_token, array(&$pg, $_mode, &$errors, $params, $node) );
+            }
 
             if( $errors ){
                 $sep = '';
@@ -179,7 +276,14 @@
                 }
                 $CTX->set( 'k_success', '' );
                 $CTX->set( 'k_error', $str_err );
+                $CTX->set( 'k_error_count', $errors );
                 $CTX->set( 'k_persist_error', $str_err );
+                $CTX->set( 'k_persist_error_count', $errors );
+
+                // HOOK: db_xxx_savefailed
+                if( $_token ){
+                    $FUNCS->dispatch_event( $node->name.'_savefailed_'.$_token, array(&$pg, $_mode, &$errors, $params, $node) );
+                }
             }
             else{
                 if( $_invalidate_cache ){
@@ -189,11 +293,19 @@
                 // report success
                 $CTX->set( 'k_success', '1' );
                 $CTX->set( 'k_error', '' );
+                $CTX->set( 'k_error_count', '0' );
+                $CTX->set( 'k_persist_error_count', '0' );
                 if( $_mode=='create' ){
                     $CTX->set( 'k_last_insert_id', $pg->id );
                     $CTX->set( 'k_last_insert_page_name', $pg->page_name );
                 }
+
+                // HOOK: db_xxx_savesuccess
+                if( $_token ){
+                    $FUNCS->dispatch_event( $node->name.'_savesuccess_'.$_token, array(&$pg, $_mode, $params, $node) );
+                }
             }
+
             if( $node->name=='db_persist' ){ $pg->destroy(); unset( $pg ); }
 
             // call the children
@@ -204,13 +316,13 @@
         }
 
         // Creates new page or Updates existing one
-        function db_persist( $params, $node ){
+        static function db_persist( $params, $node ){
             // delegate to 'db_persist_form' tag
             return KDataBoundForm::db_persist_form( $params, $node );
         }
 
         // Same as db_persist above but has no context of its own
-        function db_persist_ex( $params, $node ){
+        static function db_persist_ex( $params, $node ){
 
             if( count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
 
@@ -220,7 +332,7 @@
         }
 
         // Deletes page
-        function db_delete( $params, $node ){
+        static function db_delete( $params, $node ){
             global $FUNCS, $DB, $CTX;
             if( count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
 
@@ -243,18 +355,27 @@
             }
 
             // get down to business
-            $rs = $DB->select( K_TBL_TEMPLATES, array('id', 'clonable'), "name='" . $DB->sanitize( $masterpage ). "'" );
-            if( !count($rs) ){
-                die( "ERROR: Tag \"".$node->name."\" - masterpage does not exist" );
+            if( $FUNCS->is_spl_template( $masterpage ) ){
+                $mode = 'delete';
+                $pg = $FUNCS->handle_spl_template( $masterpage, array($page_id, '', &$mode) );
+                if( $pg->error ){
+                    die( "ERROR: Tag \"".$node->name."\" - " . $pg->err_msg );
+                }
             }
+            else{
+                $rs = $DB->select( K_TBL_TEMPLATES, array('id', 'clonable'), "name='" . $DB->sanitize( $masterpage ). "'" );
+                if( !count($rs) ){
+                    die( "ERROR: Tag \"".$node->name."\" - masterpage does not exist" );
+                }
 
-            if( !$rs[0]['clonable'] ){
-                die( "ERROR: Tag \"".$node->name."\" - cannot delete non-clonable template" );
-            }
+                if( !$rs[0]['clonable'] ){
+                    die( "ERROR: Tag \"".$node->name."\" - cannot delete non-clonable template" );
+                }
 
-            $pg = new KWebpage( $rs[0]['id'], $page_id );
-            if( $pg->error ){
-                die( "ERROR: Tag \"".$node->name."\" - " . $pg->err_msg );
+                $pg = new KWebpage( $rs[0]['id'], $page_id );
+                if( $pg->error ){
+                    die( "ERROR: Tag \"".$node->name."\" - " . $pg->err_msg );
+                }
             }
 
             // delete..
@@ -269,7 +390,7 @@
         }
 
         // Deletes page bound to the form
-        function db_delete_form( $params, $node ){
+        static function db_delete_form( $params, $node ){
             global $FUNCS, $DB, $CTX;
             if( count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
 
@@ -282,17 +403,19 @@
                    );
 
             // get the page object bound to the form
-            $pg = &$CTX->get_object( 'bound_page', 'form' );
+            $pg = &$CTX->get_object( 'k_bound_page', 'form' );
             if( is_null($pg) ){
                 die( "ERROR: Tag \"".$node->name."\" needs to be within a Data-bound form" );
             }
 
-            if( $pg->id==-1 ){
+            if( $pg->id==-1 || is_null($pg->id) ){
                 die( "ERROR: Tag \"".$node->name."\" - mode of Data-bound form needs to be 'edit'" );
             }
 
-            if( !$pg->tpl_is_clonable ){
-                die( "ERROR: Tag \"".$node->name."\" - cannot delete non-clonable template" );
+            if( $pg instanceof KWebpage ){
+                if( !$pg->tpl_is_clonable ){
+                    die( "ERROR: Tag \"".$node->name."\" - cannot delete non-clonable template" );
+                }
             }
 
             // delete..
@@ -308,7 +431,7 @@
         }
 
         // Begins transaction
-        function db_begin_trans( $params, $node ){
+        static function db_begin_trans( $params, $node ){
             global $DB;
             if( count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
 
@@ -316,7 +439,7 @@
         }
 
         // Commits transaction
-        function db_commit_trans( $params, $node ){
+        static function db_commit_trans( $params, $node ){
             global $DB, $FUNCS;
             if( count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
 
@@ -332,7 +455,7 @@
         }
 
         // Rollbacks transaction
-        function db_rollback_trans( $params, $node ){
+        static function db_rollback_trans( $params, $node ){
             global $DB, $FUNCS;
             if( count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
 
@@ -348,7 +471,7 @@
         }
 
         // Provides meta-info about all fields in a template
-        function db_fields( $params, $node ){
+        static function db_fields( $params, $node ){
             global $FUNCS, $PAGE, $DB, $CTX;
 
             extract( $FUNCS->get_named_vars(
@@ -356,26 +479,75 @@
                                'masterpage'=>'',
                                'page_name'=>'',
                                'names'=>'', /*name(s) of fields to fetch. Can have negation*/
+                               'types'=>'', /*type(s) of fields to fetch. Can have negation*/
                                'skip_system'=>'1',
-                               'skip_deleted'=>'1'
+                               'skip_deleted'=>'1',
+                               'bound'=>'0', /*use bound page*/
+                               'render_display'=>'0',
+                               'sub_template'=>'',
                               ),
                         $params)
                    );
 
             // sanitize params
             $masterpage = trim( $masterpage );
-            if( !$masterpage ){
-                die( "ERROR: Tag \"".$node->name."\": 'masterpage' attribute missing" );
-            }
             $page = trim( $page_name );
             $names = trim( $names );
+            $types = trim( $types );
             $skip_system = ( $skip_system==0 ) ? 0 : 1;
             $skip_deleted = ( $skip_deleted==0 ) ? 0 : 1;
+            $bound = ( $bound==1 ) ? 1 : 0;
+            $render_display = ( $render_display==1 ) ? 1 : 0;
+            $sub_template = trim( $sub_template );
 
-            $rs = $DB->select( K_TBL_TEMPLATES, array('id', 'clonable'), "name='" . $DB->sanitize( $masterpage ). "'" );
-            if( !count($rs) ) return;
+            if( !$bound ){
+                if( !$masterpage ){
+                    die( "ERROR: Tag \"".$node->name."\": 'masterpage' attribute missing" );
+                }
 
-            $pg = new KWebpage( $rs[0]['id'], 0, $page );
+                if( $FUNCS->is_spl_template( $masterpage ) ){
+                    $mode = 'edit';
+                    $pg = $FUNCS->handle_spl_template( $masterpage, array('', $page, &$mode) );
+                }
+                else{
+                    $rs = $DB->select( K_TBL_TEMPLATES, array('id', 'clonable'), "name='" . $DB->sanitize( $masterpage ). "'" );
+                    if( !count($rs) ) return;
+                    $tpl_id = $rs[0]['id'];
+
+                    $page_id = $sub_tpl_id = null;
+                    if( $page ){
+                        $rs = $DB->select( K_TBL_PAGES, array('id'), "page_name='" . $DB->sanitize( $page ). "' AND template_id='" . $DB->sanitize( $tpl_id ). "'" );
+                        if( !count($rs) ) return;
+                        $page_id = $rs[0]['id'];
+                    }
+                    elseif( $sub_template ){
+                        if( !class_exists('KSubTemplates') ){  return; } // subtemplates addon not active
+
+                        $rs = $DB->select( K_TBL_PAGES.' p INNER JOIN '.K_TBL_TEMPLATES.' t ON p.template_id = t.id', array('p.id'), "t.name='".$DB->sanitize( KSubTemplates::_get_aux_tpl_name($masterpage) )."' AND page_name='".$DB->sanitize( $sub_template )."'" );
+                        if( !count($rs) ){  return; }
+                        $sub_tpl_id = $rs[0]['id'];
+                        $page_id = -1;
+                    }
+
+                    if( $sub_tpl_id ){
+                        $listener_get_sub_template = function(&$subtpl_id) use($sub_tpl_id){
+                            $subtpl_id = $sub_tpl_id;
+                        };
+                        $FUNCS->add_event_listener( 'get_sub_template_of_new_page', $listener_get_sub_template );
+                    }
+
+                    $pg = new KWebpage( $tpl_id, $page_id );
+
+                    if( $sub_tpl_id ){
+                        $FUNCS->remove_event_listener( 'get_sub_template_of_new_page', $listener_get_sub_template );
+                    }
+                }
+            }
+            else{
+                $pg = &$CTX->get_object( 'k_bound_page' );
+                if( is_null($pg) ) return;
+            }
+
             if( !$pg->error ){
                 if( $names ){
                     // Negation?
@@ -388,6 +560,17 @@
                     $arr_names = array_map( "trim", explode( ',', $names ) );
                 }
 
+                if( $types ){
+                    // Negation?
+                    $neg_types = 0;
+                    $pos = strpos( strtoupper($types), 'NOT ' );
+                    if( $pos!==false && $pos==0 ){
+                        $neg_types = 1;
+                        $types = trim( substr($types, strpos($types, ' ')) );
+                    }
+                    $arr_types = array_map( "trim", explode( ',', $types ) );
+                }
+
                 $count = count( $pg->fields );
                 for( $x=0; $x<$count; $x++ ){
                     $f = &$pg->fields[$x];
@@ -396,7 +579,20 @@
                         continue;
                     }
 
-                    $f->resolve_dynamic_params();
+                    if( $arr_types ){
+                        if( $neg_types ){
+                            if( in_array($f->k_type, $arr_types) ){
+                                unset( $f );
+                                continue;
+                            }
+                        }
+                        else{
+                            if( !in_array($f->k_type, $arr_types) ){
+                                unset( $f );
+                                continue;
+                            }
+                        }
+                    }
 
                     if( $arr_names ){
                         if( $neg ){
@@ -413,6 +609,8 @@
                         }
                     }
 
+                    $f->resolve_dynamic_params();
+
                     $CTX->reset();
                     $vars = array();
                     $vars['id'] = $f->id;
@@ -422,10 +620,11 @@
                     $vars['desc'] = $f->k_desc;
                     $vars['type'] = $f->k_type;
                     $vars['hidden'] = $f->hidden;
+                    $vars['searchable'] = $f->searchable;
                     $vars['search_type'] = $f->search_type;
                     $vars['order'] = $f->k_order;
-                    if( !$pg->tpl_is_clonable || ($pg->tpl_is_clonable && $page) ){
-                        $vars['data'] = $f->get_data();
+                    if( !$pg->tpl_is_clonable || ($pg->tpl_is_clonable && ($page || $bound)) ){
+                        $vars['data'] = $f->get_data( 1 );
                     }
                     else{
                         $vars['data'] = $f->default_data;
@@ -462,6 +661,9 @@
                     $vars['dynamic'] = $f->dynamic;
                     $vars['system'] = $f->system;
                     $vars['udf'] = $f->udf;
+                    $vars['modified'] = (int)$f->modified;
+                    $vars['orig_data'] = $f->orig_data;
+
                     // udf params
                     if( strlen($f->custom_params) ){
                         $arr_params = $FUNCS->unserialize($f->custom_params);
@@ -471,8 +673,15 @@
                             }
                         }
                     }
-                    unset( $f );
+                    $vars['k_caption'] = $f->label ? $f->label : $f->name;
                     $CTX->set_all( $vars );
+
+                    if( $render_display ){
+                        $display_html = $FUNCS->render( 'display_field_'.$f->k_type, $f );
+                        if( is_null($display_html) ) $display_html = $vars['data'];
+                        $CTX->set('k_display_html', $display_html);
+                    }
+                    unset( $f );
 
                     // call the children
                     foreach( $node->children as $child ){
@@ -489,7 +698,7 @@
         ////////////////////////////////////////////////////////////////////////
 
         // Given an 'action', returns a nonce for it
-        function create_nonce( $params, $node ){
+        static function create_nonce( $params, $node ){
             global $FUNCS;
             if( count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
 
@@ -510,7 +719,7 @@
         // Given an 'action' and its purported 'nonce', verifies if the nonce tallies with the action.
         // If verification fails the script is summarily terminated.
         // If 'nonce' not provided, looks for a GPC parameter named 'nonce'.
-        function validate_nonce( $params, $node ){
+        static function validate_nonce( $params, $node ){
             global $FUNCS;
             if( count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
 
@@ -531,7 +740,7 @@
         // Given an 'action' and its purported 'nonce', verifies if the nonce tallies with the action.
         // Returns '1' if verification suceeds else returns '0'.
         // If 'nonce' not provided, looks for a GPC parameter named 'nonce'.
-        function check_nonce( $params, $node ){
+        static function check_nonce( $params, $node ){
             global $FUNCS;
             if( count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
 
@@ -566,7 +775,7 @@
     $FUNCS->register_tag( 'validate_nonce', array('KDataBoundForm', 'validate_nonce') );
     $FUNCS->register_tag( 'check_nonce', array('KDataBoundForm', 'check_nonce') );
 
-    require_once( K_COUCH_DIR.'addons/data-bound-form/securefile.php' );
-    require_once( K_COUCH_DIR.'addons/data-bound-form/throttle.php' );
-    require_once( K_COUCH_DIR.'addons/data-bound-form/datetime.php' );
-    require_once( K_COUCH_DIR.'addons/data-bound-form/checkspam.php' );
+    require_once( K_ADDONS_DIR.'data-bound-form/securefile.php' );
+    require_once( K_ADDONS_DIR.'data-bound-form/throttle.php' );
+    require_once( K_ADDONS_DIR.'data-bound-form/datetime.php' );
+    require_once( K_ADDONS_DIR.'data-bound-form/checkspam.php' );

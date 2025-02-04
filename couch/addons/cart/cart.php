@@ -36,7 +36,6 @@
     */
 
     if ( !defined('K_COUCH_DIR') ) die(); // cannot be loaded directly
-    require_once( K_COUCH_DIR.'addons/cart/session.php' );
 
     define( 'PP_CART_VERSION', '1.0' );
     define( 'PP_ACTION_UNDEFINED', 0 );
@@ -73,7 +72,7 @@
         var $custom_vars = array();
 
 
-        function KCart(){
+        function __construct(){
             global $FUNCS;
 
             $this->populate_config();
@@ -118,8 +117,8 @@
         function populate_config(){
 
             $pp = array();
-            if( file_exists(K_COUCH_DIR.'addons/cart/config.php') ){
-                require_once( K_COUCH_DIR.'addons/cart/config.php' );
+            if( file_exists(K_ADDONS_DIR.'cart/config.php') ){
+                require_once( K_ADDONS_DIR.'cart/config.php' );
             }
             $this->config = array_map( "trim", $pp );
             unset( $pp );
@@ -220,7 +219,7 @@
             if( isset($_GET['kcart_action']) && $FUNCS->is_non_zero_natural($_GET['kcart_action']) ){
 
                 // Sanity check - actions should be executed only when invoked on the cart template
-                $cur_tpl = KWebpage::get_template_name();
+                $cur_tpl = $FUNCS->get_template_name();
                 if( $FUNCS->is_error($cur_tpl) || $cur_tpl!=$this->config['tpl_cart']) return;
 
                 $action = (int)$_GET['kcart_action'];
@@ -305,6 +304,7 @@
                             $arr_sort_keys = array(); // used to sort items in the cart
                             $arr_display_attrs = array(); // an array of all selected variant options with values
                             $arr_sort_keys[] = $pg->page_name;
+                            $arr_sort_keys[] = $pg->id;
 
                             //get the price modifiers, if any
                             if( isset($pp_options) ){
@@ -356,7 +356,7 @@
                             }
                             // if all ok, add to cart
                             if( $all_ok ){
-                                // create the sorting key - page_name + attributes
+                                // create the sorting key - page_name + id + attributes
                                 $sorting_key = $FUNCS->make_key( $arr_sort_keys );
 
                                 // create a unique id for this item. Will be passed on for future actions on cart.
@@ -369,12 +369,16 @@
                                     $this->items[$sorting_key]['quantity'] += $quantity;
                                 }
                                 else{
+                                    // HOOK: cart_get_item_link
+                                    $link = K_SITE_URL . $pg->get_page_view_link();
+                                    $FUNCS->dispatch_event( 'cart_get_item_link', array($pg->tpl_name, &$link) );
+
                                     $this->items[$sorting_key] = array(
                                        'line_id' => $unique_key,
                                        'id' => $pg->id,
                                        'name' => $pg->page_name,
                                        'title' => $pg->page_title,
-                                       'link' => K_SITE_URL . $pg->get_page_view_link(),
+                                       'link' => $link,
                                        'price' => $pp_price,
                                        'quantity' => $quantity,
                                        'line_total' => 0,
@@ -382,6 +386,9 @@
                                        'options' => $arr_display_attrs,
                                        'requires_shipping' => ( $pp_requires_shipping ) ? 1 : 0,
                                     );
+
+                                    // HOOK: cart_alter_custom_fields
+                                    $FUNCS->dispatch_event( 'cart_alter_custom_fields', array(&$arr_custom_fields, &$pg, &$this) );
 
                                     // Add custom attributes if any
                                     foreach( $arr_custom_fields as $k=>$v ){
@@ -620,16 +627,24 @@
             if( $tpl==1 ){ // cart template
                 if( !$this->link_cart_template ){
                     $tpl = $this->get_config('tpl_cart');
-                    $link = ( K_PRETTY_URLS ) ? $FUNCS->get_pretty_template_link( $tpl ) : $tpl;
-                    $this->link_cart_template = K_SITE_URL . $link;
+                    $link = K_SITE_URL . (( K_PRETTY_URLS ) ? $FUNCS->get_pretty_template_link( $tpl ) : $tpl);
+
+                    // HOOK: cart_get_template_link
+                    $FUNCS->dispatch_event( 'cart_get_template_link', array($tpl, &$link) );
+
+                    $this->link_cart_template = $link;
                 }
                 return $this->link_cart_template;
             }
             elseif( $tpl==2 ){ // checkout template
                 if( !$this->link_checkout_template ){
                     $tpl = $this->get_config('tpl_checkout');
-                    $link = ( K_PRETTY_URLS ) ? $FUNCS->get_pretty_template_link( $tpl ) : $tpl;
-                    $this->link_checkout_template = K_SITE_URL . $link;
+                    $link = K_SITE_URL . (( K_PRETTY_URLS ) ? $FUNCS->get_pretty_template_link( $tpl ) : $tpl);
+
+                    // HOOK: cart_get_template_link
+                    $FUNCS->dispatch_event( 'cart_get_template_link', array($tpl, &$link) );
+
+                    $this->link_checkout_template = $link;
                 }
                 return $this->link_checkout_template;
             }
@@ -670,7 +685,7 @@
         }
 
         function _is_option_text( $opt ){
-            return ( count($opt['values'])==1 && $opt['values'][0]['attr']='*TEXT*' ) ? true : false;
+            return ( count($opt['values'])==1 && $opt['values'][0]['attr']=='*TEXT*' ) ? true : false;
         }
 
         function payment_gateway( $params ){ // Used by cms:pp_payment_gateway tag
@@ -786,7 +801,7 @@
         }
 
         ///////////////////////////////////////////// tag handlers//////////////
-        function product_form_handler( $params, $node ){
+        static function product_form_handler( $params, $node ){
            global $CTX, $FUNCS, $CART;
 
             // generates equivalent code of following -
@@ -802,7 +817,7 @@
             //..
             //</form>
 
-            $html = '<form action="' . $CART->_get_template_link( 1 ) . '?kcart_action=' . ($action=($node->name=='pp_product_form') ? '1' : '2');
+            $html = '<form action="' . $CART->get_link( 1, 'kcart_action=' . ($action=($node->name=='pp_product_form') ? '1' : '2') );
             $redirect = '';
             $extra = '';
             for( $x=0; $x<count($params); $x++ ){
@@ -841,7 +856,7 @@
             return $html;
         }
 
-        function product_options_handler( $params, $node ){
+        static function product_options_handler( $params, $node ){
            global $CTX, $FUNCS, $CART;
 
             extract( $FUNCS->get_named_vars(
@@ -857,7 +872,7 @@
             $arr_opts = $CART->_parse_options( $CTX->get('pp_options') );
 
             // Return if only count asked for
-            if( $count_only ) return count( $arr_options );
+            if( $count_only ) return count( $arr_opts );
 
             if( count($arr_opts) ){
                 for($y=0; $y<count($arr_opts); $y++){ // create a dropdown for each set of options
@@ -891,7 +906,7 @@
 
         }
 
-        function product_option_values_handler( $params, $node ){
+        static function product_option_values_handler( $params, $node ){
             global $CTX, $FUNCS, $CART;
 
             // get the option object supplied by 'cms:pp_product_options' tag
@@ -963,14 +978,14 @@
             return $html;
         }
 
-        function cart_form_handler( $params, $node ){
+        static function cart_form_handler( $params, $node ){
            global $CART;
 
            // Delegate to 'cms:pp_product_form'
            return $CART->product_form_handler( $params, $node );
         }
 
-        function cart_items_handler( $params, $node ){
+        static function cart_items_handler( $params, $node ){
            global $CTX, $FUNCS, $CART;
            $arr_canonical_attrs = array( 'line_id', 'id', 'name', 'title', 'link', 'price', 'quantity', 'line_total', 'options', 'requires_shipping' );
 
@@ -1007,7 +1022,7 @@
         }
 
         // To be used as a child of 'cms:pp_cart_items' tag. Iterates through the options selected for the current line-item
-        function selected_options_handler( $params, $node ){
+        static function selected_options_handler( $params, $node ){
             global $CTX, $FUNCS;
             extract( $FUNCS->get_named_vars(
                         array(
@@ -1056,7 +1071,7 @@
         }
 
         // all generic variables
-        function cart_vars_handler( $params, $node ){
+        static function cart_vars_handler( $params, $node ){
             global $CTX, $FUNCS, $CART;
             if( count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
 
@@ -1117,19 +1132,19 @@
                     $html = $CART->_get_template_link( 1 );
                     break;
                 case 'pp_add_item_link':
-                    $html = $CART->_get_template_link( 1 ) . '?kcart_action=1';
+                    $html = $CART->get_link( 1, 'kcart_action=1' );
                     break;
                 case 'pp_update_item_link':
-                    $html = $CART->_get_template_link( 1 ) . '?kcart_action=2';
+                    $html = $CART->get_link( 1, 'kcart_action=2' );
                     break;
                 case 'pp_remove_item_link':
-                    $html = $CART->_get_template_link( 1 ) . '?kcart_action=3&amp;line_id=' . $CTX->get( 'line_id' );
+                    $html = $CART->get_link( 1, 'kcart_action=3&amp;line_id=' . $CTX->get('line_id') );
                     break;
                 case 'pp_empty_cart_link':
-                    $html = $CART->_get_template_link( 1 ) . '?kcart_action=4';
+                    $html = $CART->get_link( 1, 'kcart_action=4' );
                     break;
                 case 'pp_checkout_link':
-                    $html = $CART->_get_template_link( 1 ) . '?kcart_action=5';
+                    $html = $CART->get_link( 1, 'kcart_action=5' );
                     break;
                 case 'pp_empty_cart':
                     $CART->items = array();
@@ -1140,7 +1155,19 @@
             return $html;
         }
 
-        function gateway_handler( $params, $node ){
+        function get_link( $tpl, $querystring ){
+            $link = $this->_get_template_link( $tpl );
+            if( $link ){
+                $querystring = trim( $querystring );
+                if( $querystring ){
+                    $sep = ( strpos($link, '?')===false ) ? '?' : '&';
+                    $link = $link . $sep . $querystring;
+                }
+            }
+            return $link;
+        }
+
+        static function gateway_handler( $params, $node ){
             global $CART;
             if( count($node->children) ) {die("ERROR: Tag \"".$node->name."\" is a self closing tag");}
 
@@ -1149,8 +1176,8 @@
 
     } // end class
 
-    if( file_exists(K_COUCH_DIR.'addons/cart/cart_ex.php') ){
-        require_once( K_COUCH_DIR.'addons/cart/cart_ex.php' );
+    if( file_exists(K_ADDONS_DIR.'cart/cart_ex.php') ){
+        require_once( K_ADDONS_DIR.'cart/cart_ex.php' );
         $CART = new KCartEx();
     }
     else{

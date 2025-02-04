@@ -24,6 +24,7 @@ define( 'K_ADMIN_LANG', 'EN' );
 
 All these locales have their respective language files (`DE.php`, `FR.php`, etc...) present in the `couch/lang/` folder.
 For locales other than these, any of these files can be renamed and modified to create the locale that suits you.
+Please see https://github.com/CouchCMS/Translations for a collection of additional community-contributed language files.
 
 
 Localizing CKEditor
@@ -35,4 +36,4 @@ config.language = 'en';
 ```
 
 All these locales have their respective language files (`de.js`, `fr.js`, etc...) present in the `couch/includes/ckeditor/lang/` folder.
-For locales other than these, you can download the corresponding language file from http://www.couchcms.com/ckeditor_431_lang.zip
+For locales other than these, you can download the corresponding language file from http://www.couchcms.com/ckeditor_459_lang.zip

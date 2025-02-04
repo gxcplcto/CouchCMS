@@ -47,13 +47,13 @@ class gd {
             $height = $image->get_height();
             $image = $image->get_image();
 
-        } elseif (is_resource($image) && (get_resource_type($image) == "gd")) {
+        } elseif ((is_resource($image) && (get_resource_type($image) == "gd")) || $image instanceof \GdImage) {
             $width = @imagesx($image);
             $height = @imagesy($image);
 
         } elseif (is_array($image)) {
-            list($key, $width) = each($image);
-            list($key, $height) = each($image);
+            $width = $image[0];
+            $height = $image[1];
             $image = imagecreatetruecolor($width, $height);
             $bg_color = imagecolorallocate($image, 255, 255, 255);
             imagefill($image, 0, 0, $bg_color);
@@ -73,8 +73,8 @@ class gd {
         }
 
         $return = (
-            is_resource($image) &&
-            (get_resource_type($image) == "gd") &&
+            ((is_resource($image) &&
+            (get_resource_type($image) == "gd")) || $image instanceof \GdImage) &&
             isset($width) &&
             isset($height) &&
             (preg_match('/^[1-9][0-9]*$/', $width) !== false) &&

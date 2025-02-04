@@ -36,22 +36,21 @@
     */
 
     if( defined('E_STRICT') ){
-        error_reporting(E_ALL & ~(E_NOTICE | E_STRICT)); // Report all errors except notices and strict standard warnings
+        error_reporting(E_ALL & ~(E_NOTICE | E_STRICT | E_WARNING | E_DEPRECATED)); // Report all errors except notices and strict standard warnings
     }
     else{
         error_reporting(E_ALL & ~E_NOTICE); // Report all errors except notices
     }
     // Since PHP 5.1.0 every call to a date/time function generates a E_NOTICE if the timezone isn't valid,
-    if( version_compare( phpversion(), '5.1.0', '>=' ) ){
-        date_default_timezone_set("America/New_York");
+    if( !ini_get('date.timezone') || !date_default_timezone_set(ini_get('date.timezone')) ){
+        date_default_timezone_set( "America/New_York" );
     }
-
 
 
     if( !defined('K_COUCH_DIR') ) die(); // cannot be loaded directly
 
-    define( 'K_COUCH_VERSION', '1.4.5' ); // Changes with every release
-    define( 'K_COUCH_BUILD', '20150722' ); // YYYYMMDD - do -
+    define( 'K_COUCH_VERSION', '2.4' ); // Changes with every release
+    define( 'K_COUCH_BUILD', '20231006' ); // YYYYMMDD - do -
 
     if( file_exists(K_COUCH_DIR.'config.php') ){
         require_once( K_COUCH_DIR.'config.php' );
@@ -60,15 +59,21 @@
         die( '<h3>"config.php" not found. Perhaps you forgot to rename the "config.example.php" file to "config.php" after editing it?</h3>' );
     }
     if( function_exists('mb_internal_encoding') ) mb_internal_encoding( K_CHARSET );
+    define( 'K_CACHE_OPCODES', '1' );
+    define( 'K_CACHE_SETTINGS', '0' );
+    if( !defined('K_CACHE_DIR') ) define( 'K_CACHE_DIR', K_COUCH_DIR . 'cache/' );
 
     // Check license
     // Ultra-simplified now that there is no IonCube involved :)
     if( !defined('K_PAID_LICENSE') ) define( 'K_PAID_LICENSE', 0 );
     if( !defined('K_REMOVE_FOOTER_LINK') ) define( 'K_REMOVE_FOOTER_LINK', 0 );
-    if( !K_PAID_LICENSE ){
-        require_once( K_COUCH_DIR.'logo.php' );
-        if( !defined('K_COUCH_LOGO_FILE') ){ die( '<h3>Invalid logo.php.</h3>' ); }
-    }
+
+    if( !defined('K_HTTPS') ) define( 'K_HTTPS', (
+        ( isset($_SERVER['HTTPS']) && (strtolower($_SERVER['HTTPS'])=='on' || strval($_SERVER['HTTPS'])=='1') ) ||
+        ( isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT']=='443' ) ||
+        ( isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO']=='https' ) ||
+        ( isset($_SERVER['HTTP_X_FORWARDED_SSL']) && strtolower($_SERVER['HTTP_X_FORWARDED_SSL'])=='on')
+    ) ? 1 : 0 );
 
     // Check if a cached version of the requested page may be used
     if ( !K_SITE_OFFLINE && !defined('K_ADMIN') && K_USE_CACHE && $_SERVER['REQUEST_METHOD']!='POST' ){
@@ -88,9 +93,14 @@
         // Authenticated users will always be served dynamically generated pages
         // Same if no_cache explicity asked for.
         if( !$auth && !$no_cache ){
-            $k_cache_dir = K_COUCH_DIR . 'cache/';
+            $k_cache_dir = K_CACHE_DIR;
             if( is_writable($k_cache_dir) ){
-                $k_cache_file = $k_cache_dir . md5($_SERVER['REQUEST_URI']) . '.dat';
+
+                $k_cache_url = 'http' . ((K_HTTPS) ? 's://' : '://') . $_SERVER['HTTP_HOST'] .
+                                (($_SERVER['SERVER_PORT']!='80' && $_SERVER['SERVER_PORT']!='443' && (strpos($_SERVER['HTTP_HOST'], ':')===false)) ? ':' . $_SERVER['SERVER_PORT'] : '') .
+                                $_SERVER['REQUEST_URI'];
+
+                $k_cache_file = $k_cache_dir . md5($k_cache_url) . '.dat';
                 if( file_exists($k_cache_file) ){
 
                     // Check if the cache has not expired
@@ -102,8 +112,13 @@
                         $pg = @unserialize( file_get_contents($k_cache_file) );
                         if( $pg ){
                             if( $pg['redirect_url'] ){
-                                header( "Location: ".$pg['redirect_url'], TRUE, 301 );
-                                die();
+                                if( $pg['redirect_url']===$k_cache_url ){ // corner case
+                                    @unlink( $k_cache_file );
+                                }
+                                else{
+                                    header( "Location: ".$pg['redirect_url'], TRUE, 301 );
+                                    die();
+                                }
                             }
                             else{
                                 $html = $pg['cached_html'];
@@ -165,19 +180,8 @@
     }
     if( !defined('K_HTML4_SELFCLOSING_TAGS') ) define( 'K_HTML4_SELFCLOSING_TAGS', 0 );
 
-    if( version_compare( '5.0.0', phpversion(), '>' ) ) {
-        die( 'You are using PHP version '. phpversion().' but the CMS requires at least 5.0' );
-    }
-    if( version_compare(phpversion(), '5.0') < 0 ){
-        /*
-         // hack for making PHP4 understand 'clone'
-        eval('
-        function clone($object) {
-          return $object;
-        }
-        ');
-        */
-        define( 'K_PHP_4', 1 );
+    if( version_compare( '5.3.0', phpversion(), '>' ) ) {
+        die( 'You are using PHP version '. phpversion().' but the CMS requires at least 5.3.0' );
     }
 
     // Refuse to run on IIS
@@ -187,11 +191,10 @@
     }
 
     if( !extension_loaded('mysql') ){
-        die( 'MySQL extension missing from your host\'s PHP installation' );
+        include_once( K_COUCH_DIR . 'includes/mysql2i/mysql2i.class.php' );
     }
 
     if ( !defined('K_SITE_DIR') ) define( 'K_SITE_DIR', dirname( K_COUCH_DIR ) . '/' );
-    if ( !defined('K_HTTPS') ) define( 'K_HTTPS', (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']=='on') ? 1 : 0 );
 
     //unset($_SERVER['DOCUMENT_ROOT']); //testing
     if ( !defined('K_SITE_URL') ){
@@ -212,7 +215,7 @@
         }
         else{
             $path = str_replace( '\\', '/', $_SERVER['DOCUMENT_ROOT'] );
-            if( $path{strlen($path)-1}=='/' ){
+            if( $path[strlen($path)-1]=='/' ){
                 $path = substr( $path, 0, strlen($path)-1);
             }
 
@@ -236,12 +239,12 @@
                     $path = $_SERVER['SCRIPT_NAME'];
                 }
                 $path = str_replace( '\\', '/', trim($path) );
-                if( $path{strlen($path)-1}=='/' ){
+                if( $path[strlen($path)-1]=='/' ){
                     $path = substr( $path, 0, strlen($path)-1);
                 }
 
                 $path2 = str_replace( '\\', '/', realpath('./') );
-                if( $path2{strlen($path2)-1}=='/' ){
+                if( $path2[strlen($path2)-1]=='/' ){
                     $path2 = substr( $path2, 0, strlen($path2)-1);
                 }
 
@@ -278,6 +281,8 @@
     if ( !defined('K_ADMIN_URL') ) define( 'K_ADMIN_URL', K_SITE_URL . basename(K_COUCH_DIR). '/' );
     if ( !defined('K_ADMIN_PAGE') ) define( 'K_ADMIN_PAGE', '' );
     if ( !defined('K_GMT_OFFSET') ) define( 'K_GMT_OFFSET', +5.5 );
+    define( 'K_SYSTEM_THEME_DIR', K_COUCH_DIR . 'theme/_system/' );
+    define( 'K_SYSTEM_THEME_URL', K_ADMIN_URL . 'theme/_system/' );
 
     require_once( K_COUCH_DIR.'functions.php' );
     $FUNCS = new KFuncs();
@@ -294,11 +299,14 @@
     }
     unset( $t );
 
-    if( get_magic_quotes_gpc() ){
-        $_GET = $FUNCS->stripslashes_deep( $_GET );
-        $_POST = $FUNCS->stripslashes_deep( $_POST );
-        $_COOKIE = $FUNCS->stripslashes_deep( $_COOKIE );
+    if( version_compare(phpversion(), "5.4.0", "<") ){
+        if( get_magic_quotes_gpc() ){
+            $_GET = $FUNCS->stripslashes_deep( $_GET );
+            $_POST = $FUNCS->stripslashes_deep( $_POST );
+            $_COOKIE = $FUNCS->stripslashes_deep( $_COOKIE );
+        }
     }
+    $__GET = $_GET; // save a pristine copy of $_GET before sanitizing the values
     $_GET = $FUNCS->sanitize_deep( $_GET );
 
     require_once( K_COUCH_DIR.'db.php' );
@@ -307,219 +315,16 @@
     if( !$DB->connect() ){
         die( '<h1>Could not connect to database</h1>' . mysql_error() );
     }
-    // get Couch's version
-    $_rs = @mysql_query( "select k_value from ".K_TBL_SETTINGS." where k_key='k_couch_version'", $DB->conn );
-    if( $_rs && ($_row = mysql_fetch_row( $_rs )) ){
 
+    // get Couch's version
+    try{
+        $_rs = @mysql_query( "select k_value from ".K_TBL_SETTINGS." where k_key='k_couch_version'", $DB->conn );
+    }
+    catch( Exception $e ){}
+    if( $_rs && ($_row = mysql_fetch_row( $_rs )) ){
         $_ver = $_row[0];
         if( version_compare(K_COUCH_VERSION, $_ver, ">") ){ // Upgrade required
-
-            $DB->begin();
-
-            // will move the queries to a separate file later
-            // upgrade to 1.0.2 (unreleased .. merged with 1.1)
-            if( version_compare("1.0.2", $_ver, ">") ){
-                // dynamic folders
-                $_sql = "ALTER TABLE `".K_TBL_TEMPLATES."` ADD `dynamic_folders` int(1) DEFAULT '0';";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_TEMPLATES."` MODIFY `name` varchar(255) NOT NULL;";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_FOLDERS."` ADD `image` text;";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX ".K_TBL_FOLDERS."_Index01 ON ".K_TBL_FOLDERS." (template_id, id);";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX ".K_TBL_FOLDERS."_Index02 ON ".K_TBL_FOLDERS." (template_id, name(255));";
-                $DB->_query( $_sql );
-
-            }
-
-            // upgrade to 1.1
-            if( version_compare("1.1.0", $_ver, ">") ){
-                // drafts
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `parent_id` int DEFAULT '0';";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_PAGES."_Index11` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `modification_date`);";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_PAGES."_Index12` ON `".K_TBL_PAGES."` (`parent_id`, `modification_date`);";
-                $DB->_query( $_sql );
-            }
-
-            // upgrade to 1.2 //actually RC1 (will be considered < 1.2.0)
-            if( version_compare("1.2", $_ver, ">") ){
-                // nested pages
-                $_sql = "ALTER TABLE `".K_TBL_TEMPLATES."` ADD `nested_pages` int(1) DEFAULT '0';";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `nested_parent_id` int DEFAULT '-1';";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `weight` int DEFAULT '0';";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `show_in_menu` int(1) DEFAULT '1';";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `menu_text` varchar(255);";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `is_pointer` int(1) DEFAULT '0';";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `pointer_link` text;";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `pointer_link_detail` text;";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `open_external` int(1) DEFAULT '0';";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."`  ADD `masquerades` int(1) DEFAULT '0';";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."`  ADD `strict_matching` int(1) DEFAULT '0';";
-                $DB->_query( $_sql );
-            }
-            // upgrade to 1.2.0RC2
-            if( version_compare("1.2.0RC2", $_ver, ">") ){
-                $_sql = "CREATE INDEX `".K_TBL_PAGES."_Index13` ON `".K_TBL_PAGES."` (`template_id`, `is_pointer`, `masquerades`, `pointer_link_detail`(255));";
-                $DB->_query( $_sql );
-            }
-            // upgrade to 1.2.0 //release
-            if( version_compare("1.2.0", $_ver, ">") ){
-
-            }
-            // upgrade to 1.2.5RC1
-            if( version_compare("1.2.5RC1", $_ver, ">") ){
-                $_sql = "ALTER TABLE `".K_TBL_TEMPLATES."` ADD `gallery` int(1) DEFAULT '0';";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `file_name` varchar(260);";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `file_ext` varchar(20);";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `file_size` int DEFAULT '0';";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `file_meta` text;";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_PAGES."_Index14` ON `".K_TBL_PAGES."` (`template_id`, `file_name`(255));";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_PAGES."_Index15` ON `".K_TBL_PAGES."` (`template_id`, `page_folder_id`, `file_name`(255));";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_PAGES."_Index16` ON `".K_TBL_PAGES."` (`template_id`, `file_ext`(20), `file_name`(255));";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_PAGES."_Index17` ON `".K_TBL_PAGES."` (`template_id`, `page_folder_id`, `file_ext`(20), `file_name`(255));";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_PAGES."_Index18` ON `".K_TBL_PAGES."` (`template_id`, `file_size`);";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_PAGES."_Index19` ON `".K_TBL_PAGES."` (`template_id`, `page_folder_id`, `file_size`);";
-                $DB->_query( $_sql );
-            }
-            // upgrade to 1.3RC1
-            if( version_compare("1.3RC1", $_ver, ">") ){
-                $_sql = "ALTER TABLE `".K_TBL_FIELDS."` ADD `custom_params` text;";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE TABLE `".K_TBL_RELATIONS."` (
-                    `pid`     int NOT NULL,
-                    `fid`     int NOT NULL,
-                    `cid`     int NOT NULL,
-                    `weight`  int DEFAULT '0',
-                    PRIMARY KEY (`pid`, `fid`, `cid`)
-                ) ENGINE = InnoDB
-                CHARACTER SET `utf8` COLLATE `utf8_general_ci`;";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_RELATIONS."_Index01` ON `".K_TBL_RELATIONS."` (`pid`, `fid`, `weight`);";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_RELATIONS."_Index02` ON `".K_TBL_RELATIONS."` (`fid`, `cid`, `weight`);";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_RELATIONS."_Index03` ON `".K_TBL_RELATIONS."` (`cid`);";
-                $DB->_query( $_sql );
-            }
-            // upgrade to 1.4RC1
-            if( version_compare("1.4RC1", $_ver, ">") ){
-                $_sql = "ALTER TABLE `".K_TBL_PAGES."` ADD `creation_IP` varchar(45);";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_PAGES."_Index20` ON `".K_TBL_PAGES."` (`creation_IP`, `creation_date`);";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE TABLE `".K_TBL_ATTACHMENTS."` (
-                    `attach_id`       bigint(11) UNSIGNED AUTO_INCREMENT NOT NULL,
-                    `file_real_name`  varchar(255) NOT NULL,
-                    `file_disk_name`  varchar(255) NOT NULL,
-                    `file_extension`  varchar(255) NOT NULL,
-                    `file_size`       int(20) UNSIGNED NOT NULL DEFAULT '0',
-                    `file_time`       int(10) UNSIGNED NOT NULL DEFAULT '0',
-                    `is_orphan`       tinyint(1) UNSIGNED DEFAULT '1',
-                    `hit_count`       int(10) UNSIGNED DEFAULT '0',
-                    PRIMARY KEY (`attach_id`)
-                    ) ENGINE = InnoDB CHARACTER SET `utf8` COLLATE `utf8_general_ci`;";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_ATTACHMENTS."_Index01` ON `".K_TBL_ATTACHMENTS."` (`is_orphan`);";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_ATTACHMENTS."_Index02` ON `".K_TBL_ATTACHMENTS."` (`file_time`);";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_ATTACHMENTS."_Index03` ON `".K_TBL_ATTACHMENTS."` (`is_orphan`, `file_time`);";
-                $DB->_query( $_sql );
-            }
-            // upgrade to 1.4.5RC1
-            if( version_compare("1.4.5RC1", $_ver, ">") ){
-                $_sql = "ALTER TABLE `".K_TBL_ATTACHMENTS."` ADD `creation_ip` varchar(45);";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_ATTACHMENTS."_index04` ON `".K_TBL_ATTACHMENTS."` (`creation_ip`, `file_time`);";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_TEMPLATES."` ADD `handler` text;";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_TEMPLATES."` ADD `custom_params` text;";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_USERS."` ADD `password_reset_key` varchar(64);";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_USERS."` ADD `failed_logins` int DEFAULT '0';";
-                $DB->_query( $_sql );
-
-                $_sql = "CREATE INDEX `".K_TBL_USERS."_password_reset_key` ON `".K_TBL_USERS."` (`password_reset_key`);";
-                $DB->_query( $_sql );
-
-                $_sql = "ALTER TABLE `".K_TBL_USERS."` MODIFY `name` varchar(255) NOT NULL;";
-                $DB->_query( $_sql );
-            }
-            // upgrade to 1.4.5
-            if( version_compare("1.4.5", $_ver, ">") ){
-                $_sql = "ALTER TABLE `".K_TBL_FIELDS."` ADD `searchable` int(1) DEFAULT '1';";
-                $DB->_query( $_sql );
-            }
-
-            // Finally update version number
-            $_rs = $DB->update( K_TBL_SETTINGS, array('k_value'=>K_COUCH_VERSION), "k_key='k_couch_version'" );
-            if( $_rs==-1 ) die( "ERROR: Unable to update version number" );
-            $DB->commit( 1 );
+            require_once( K_COUCH_DIR.'upgrade.php' );
         }
     }
     else{
@@ -531,9 +336,6 @@
     }
 
     require_once( K_COUCH_DIR.'auth/auth.php' );
-    if ( defined('K_USE_ALTERNATIVE_MTA') && K_USE_ALTERNATIVE_MTA ){
-        require_once( K_COUCH_DIR.'includes/email.php' );
-    }
 
     // set paths for uploaded images
     global $Config;
@@ -567,26 +369,71 @@
     // full boot of core
     require_once( K_COUCH_DIR.'page.php' );
     require_once( K_COUCH_DIR.'tags.php' );
+    require_once( K_COUCH_DIR.'route.php' );
 
     $TAGS = new KTags();
     $CTX = new KContext();
     $PAGE; // Current page being handled
 
     // addons to 1.3
-    require_once( K_COUCH_DIR . 'addons/nicedit/nicedit.php' );
-    require_once( K_COUCH_DIR . 'addons/repeatable/repeatable.php' );
-    require_once( K_COUCH_DIR . 'addons/relation/relation.php' );
+    define( 'K_ADDONS_DIR',  K_COUCH_DIR . 'addons/' );
+    require_once( K_ADDONS_DIR . 'nicedit/nicedit.php' );
+    require_once( K_ADDONS_DIR . 'repeatable/repeatable.php' );
+    require_once( K_ADDONS_DIR . 'relation/relation.php' );
+    require_once( K_ADDONS_DIR . 'cart/session.php' );
+    require_once( K_ADDONS_DIR . 'data-bound-form/data-bound-form.php' );
+
+    // addons to 2.0
+    require_once( K_ADDONS_DIR . 'recaptcha/recaptcha.php' );
+    if ( defined('K_USE_ALTERNATIVE_MTA') && K_USE_ALTERNATIVE_MTA ){
+        require_once( K_ADDONS_DIR . 'phpmailer/phpmailer.php' );
+    }
+    require_once( K_COUCH_DIR.'addons/mosaic/mosaic.php' );
+
+    // Current user's authentication info
+    $AUTH = new KAuth( );
+
+    require_once( K_SYSTEM_THEME_DIR . 'register.php' );
+    if( defined('K_ADMIN_THEME') ){
+        $k_admin_theme = trim( K_ADMIN_THEME, " /\\" );
+
+        if( $k_admin_theme ){
+            if( !KFuncs::is_title_clean($k_admin_theme) ){
+                die( "K_ADMIN_THEME setting in config.php contains invalid characters" );
+            }
+            if( is_dir(K_COUCH_DIR . 'theme/' . $k_admin_theme) ){
+                define( 'K_THEME_NAME', $k_admin_theme );
+                define( 'K_THEME_DIR', K_COUCH_DIR . 'theme/' . $k_admin_theme . '/' );
+                define( 'K_THEME_URL', K_ADMIN_URL . 'theme/' . $k_admin_theme . '/' );
+            }
+        }
+    }
+    if( !defined('K_THEME_NAME') ) define( 'K_THEME_NAME', '' );
+    if( !defined('K_THEME_DIR') ) define( 'K_THEME_DIR', '' );
+    if( !defined('K_THEME_URL') ) define( 'K_THEME_URL', '' );
 
     // include custom functions/addons if any
-    if( file_exists(K_COUCH_DIR . 'addons/kfunctions.php') ){
-        include_once( K_COUCH_DIR.'addons/kfunctions.php' );
+    if( file_exists(K_ADDONS_DIR . 'kfunctions.php') ){
+        include_once( K_ADDONS_DIR . 'kfunctions.php' );
     }
     if( file_exists(K_SITE_DIR . 'kfunctions.php') ){
         include_once( K_SITE_DIR . 'kfunctions.php' );
     }
+    if( K_THEME_DIR && file_exists(K_THEME_DIR . 'kfunctions.php') ){
+        include_once( K_THEME_DIR . 'kfunctions.php' );
+    }
+    if( K_THEME_DIR && file_exists(K_THEME_DIR . 'icons.php') ){ // translated icon names used by theme
+        global $t;
+        $t = array();
+        include_once( K_THEME_DIR . 'icons.php' );
+        $FUNCS->_ti =  array_filter( array_map("trim", $t) );
+        unset( $t );
+    }
 
-    // Current user's authentication info
-    $AUTH = new KAuth( );
+    // initialize theming (for the admin panel we'll defer this till the current route is selected)
+    if( !defined('K_ADMIN') ){
+        $FUNCS->init_render();
+    }
 
     // All addons loaded at this point
     $FUNCS->dispatch_event( 'init' );

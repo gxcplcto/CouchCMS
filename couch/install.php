@@ -61,6 +61,7 @@
         K_TBL_FULLTEXT,
         K_TBL_COMMENTS,
         K_TBL_RELATIONS,
+        K_TBL_SUB_TEMPLATES,
     );
     $k_stmts = array();
     $k_stmts[] = "CREATE TABLE ".K_TBL_COMMENTS." (
@@ -121,7 +122,7 @@
       height            int,
       width             int,
       k_group           varchar(128),
-      collapsed         int(1),
+      collapsed         int(1) DEFAULT '-1',
       assoc_field       varchar(128),
       crop              int(1) DEFAULT '0',
       enforce_max       int(1) DEFAULT '1',
@@ -136,8 +137,10 @@
       disable_uploader  int(1) DEFAULT '0',
       _html             text COMMENT 'Internal',
       dynamic           text,
-      custom_params     text,
+      custom_params     mediumtext,
       searchable        int(1) DEFAULT '1',
+      class             tinytext,
+      not_active        text,
       PRIMARY KEY (id)
     ) ENGINE = InnoDB CHARACTER SET utf8 COLLATE utf8_general_ci;";
 
@@ -199,7 +202,9 @@
       file_ext             varchar(20),
       file_size            int DEFAULT '0',
       file_meta            text,
-      creation_IP varchar(45),
+      creation_IP          varchar(45),
+      k_order            int DEFAULT '0',
+      ref_count          int DEFAULT '1',
 
       PRIMARY KEY (id)
     ) ENGINE = InnoDB CHARACTER SET utf8 COLLATE utf8_general_ci;";
@@ -226,6 +231,13 @@
       gallery          int(1) DEFAULT '0',
       handler          text,
       custom_params    text,
+      type             varchar(255),
+      config_list      text,
+      config_form      text,
+      parent           varchar(255),
+      icon             varchar(255),
+      deleted          int(1) DEFAULT '0',
+      has_globals      int(1) DEFAULT '0',
       PRIMARY KEY (id)
     ) ENGINE = InnoDB CHARACTER SET utf8 COLLATE utf8_general_ci;";
 
@@ -240,7 +252,7 @@
       registration_date  datetime,
       access_level       int DEFAULT '0',
       disabled           int DEFAULT '0',
-      system             int DEFAULT '0',
+      `system`           int DEFAULT '0',
       last_failed        bigint(11) DEFAULT '0',
       failed_logins      int DEFAULT '0',
       PRIMARY KEY (id)
@@ -266,6 +278,15 @@
     `creation_ip`     varchar(45),
     PRIMARY KEY (`attach_id`)
     ) ENGINE = InnoDB CHARACTER SET `utf8` COLLATE `utf8_general_ci`;";
+
+    $k_stmts[] = "CREATE TABLE `".K_TBL_SUB_TEMPLATES."` (
+    `template_id`     int NOT NULL,
+    `sub_template_id` int NOT NULL,
+    `field_id`        int NOT NULL,
+    `is_stub`         int,
+    `filter_type`     decimal(5,2),
+    PRIMARY KEY (`template_id`, `sub_template_id`, `field_id`)
+    ) ENGINE = InnoDB CHARACTER SET utf8 COLLATE utf8_general_ci;";
 
     $k_stmts[] = "CREATE INDEX ".K_TBL_COMMENTS."_Index01
       ON ".K_TBL_COMMENTS."
@@ -310,6 +331,10 @@
     $k_stmts[] = "CREATE INDEX ".K_TBL_FIELDS."_Index02
       ON ".K_TBL_FIELDS."
       (template_id);";
+
+    $k_stmts[] = "CREATE UNIQUE INDEX ".K_TBL_FIELDS."_index03
+      ON ".K_TBL_FIELDS."
+      (template_id, name);";
 
     $k_stmts[] = "CREATE INDEX ".K_TBL_FOLDERS."_Index01
       ON ".K_TBL_FOLDERS."
@@ -384,18 +409,35 @@
       (template_id, is_pointer, masquerades, pointer_link_detail(255));";
 
     $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_Index14` ON `".K_TBL_PAGES."` (`template_id`, `file_name`(255));";
-
     $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_Index15` ON `".K_TBL_PAGES."` (`template_id`, `page_folder_id`, `file_name`(255));";
-
     $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_Index16` ON `".K_TBL_PAGES."` (`template_id`, `file_ext`(20), `file_name`(255));";
-
     $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_Index17` ON `".K_TBL_PAGES."` (`template_id`, `page_folder_id`, `file_ext`(20), `file_name`(255));";
-
     $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_Index18` ON `".K_TBL_PAGES."` (`template_id`, `file_size`);";
-
     $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_Index19` ON `".K_TBL_PAGES."` (`template_id`, `page_folder_id`, `file_size`);";
-
     $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_Index20` ON `".K_TBL_PAGES."` (`creation_IP`, `creation_date`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index21` ON `".K_TBL_PAGES."` (`template_id`, `k_order`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index22` ON `".K_TBL_PAGES."` (`template_id`, `page_folder_id`, `k_order`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index23` ON `".K_TBL_PAGES."` (`k_order`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_Index24` ON `".K_TBL_PAGES."` (`status`, `ref_count`, `modification_date`);";
+
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index25` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `publish_date`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index26` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `page_name`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index27` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `page_title`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index28` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `modification_date`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index29` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `comments_count`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index30` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `file_name`(255));";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index31` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `file_ext`, `file_name`(255));";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index32` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `file_size`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index33` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `k_order`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index34` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `page_folder_id`, `publish_date`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index35` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `page_folder_id`, `page_name`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index36` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `page_folder_id`, `page_title`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index37` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `page_folder_id`, `modification_date`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index38` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `page_folder_id`, `comments_count`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index39` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `page_folder_id`, `file_name`(255));";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index40` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `page_folder_id`, `file_ext`, `file_name`(255));";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index41` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `page_folder_id`, `file_size`);";
+    $k_stmts[] = "CREATE INDEX `".K_TBL_PAGES."_index42` ON `".K_TBL_PAGES."` (`template_id`, `parent_id`, `page_folder_id`, `k_order`);";
 
     $k_stmts[] = "CREATE UNIQUE INDEX ".K_TBL_TEMPLATES."_Index01
       ON ".K_TBL_TEMPLATES."
@@ -453,6 +495,10 @@
     ON `".K_TBL_ATTACHMENTS."`
     (`creation_ip`, `file_time`);";
 
+    $k_stmts[] = "CREATE INDEX `".K_TBL_SUB_TEMPLATES."_index01`
+    ON `".K_TBL_SUB_TEMPLATES."`
+    (`field_id`);";
+
     $k_stmts[] = "INSERT INTO ".K_TBL_USER_LEVELS." (id, name, title, k_level, disabled) VALUES (1, 'superadmin', 'Super Admin', 10, 0);";
     $k_stmts[] = "INSERT INTO ".K_TBL_USER_LEVELS." (id, name, title, k_level, disabled) VALUES (2, 'admin', 'Administrator', 7, 0);";
     $k_stmts[] = "INSERT INTO ".K_TBL_USER_LEVELS." (id, name, title, k_level, disabled) VALUES (3, 'authenticated_user_special', 'Authenticated User (Special)', 4, 0);";
@@ -465,7 +511,7 @@
     }
 
     function k_install( $name, $pwd, $email ){
-        global $CTX, $DB, $FUNCS, $k_couch_tables, $k_stmts;
+        global $CTX, $DB, $FUNCS, $AUTH, $k_couch_tables, $k_stmts;
         $err = '';
 
         // First check if any of the tables to be created do not already exist
@@ -514,7 +560,7 @@
             $pwd = $DB->sanitize( $pwd );
             $email = $DB->sanitize( $email );
             $creation_time = $FUNCS->get_current_desktop_time();
-            $k_stmts[] = "INSERT INTO ".K_TBL_USERS." (id, name, title, password, email, activation_key, password_reset_key, registration_date, access_level, disabled, system, last_failed, failed_logins) VALUES (1, '".$name."', '".$name."', '".$pwd."', '".$email."', '', '', '".$creation_time."', 10, 0, 1, 0, 0);";
+            $k_stmts[] = "INSERT INTO ".K_TBL_USERS." (id, name, title, password, email, activation_key, password_reset_key, registration_date, access_level, disabled, `system`, last_failed, failed_logins) VALUES (1, '".$name."', '".$name."', '".$pwd."', '".$email."', '', '', '".$creation_time."', 10, 0, 1, 0, 0);";
 
             foreach( $k_stmts as $sql ){
                 @mysql_query( $sql );
@@ -527,6 +573,13 @@
 
         if( !$err ){
             @mysql_query( "COMMIT" );
+            $FUNCS->dispatch_event( 'install_complete' );
+
+            // if dump file (extended inserts) available, redirect to it..
+            if( file_exists(K_COUCH_DIR . 'install-ex2.php') ){
+              $dest = K_ADMIN_URL.'restore_dump.php?offset=0&lines=0&splash=1&nonce='.$FUNCS->create_nonce( 'restore_dump_0_0' );
+              $AUTH->redirect( $dest );
+            }
         }
         else{
             @mysql_query( "ROLLBACK" );
@@ -539,65 +592,70 @@
     ////////////////////////////
     ?>
     <?php echo $FUNCS->login_header(); ?>
-    <cms:capture into='my_form'>
-	<cms:form name="frm_login" action="" method="post" anchor="0" onSubmit="this.k_install.disabled=true; return true;">
-	    <cms:if k_success >
-		<cms:set acct_name=frm_name 'global' />
-		<cms:set acct_pwd=frm_password 'global' />
-		<cms:set acct_email=frm_email 'global' />
-		<cms:set form_validated='1' 'global' />
-	    <cms:else />
-		<cms:if k_error >
-		    <div class="error" style="margin-bottom:10px; display:block">
-			<cms:each k_error >
-			    <cms:show item /><br>
-			</cms:each>
-		    </div>
-		<cms:else />
-		    <div class="notice" style="margin-bottom:10px; display:block">
-			Installation required
-		    </div>
-		</cms:if>
-		<p>
-		    <label>Super-Admin Username</label><br>
-		    <cms:input type="text" id="k_user_name" name="name" maxlength="40"
-			       required="1" validator='title_ready|min_len=4'
-			       validator_msg='title_ready=Only Lowercase characters, numerals, hyphen and underscore permitted'
-			       size="20" autofocus="autofocus" />
-		</p>
-		<p>
-		    <label>Password</label><br>
-		    <cms:input type="password" id="k_user_pwd" name="password" required="1" validator='min_len=5' size="20"/>
-		</p>
-		<p>
-		    <label>Repeat Password</label><br>
-		    <cms:input type="password" id="k_user_pwd_repeat" required="1" validator="matches_field=password" name="repeat_password" size="20"/>
-		</p>
-		<p>
-		    <label>E-Mail</label><br>
-		    <cms:input type="text" id="k_user_email" name="email" required='1' validator='email' size="20"/>
-		</p>
-		<cms:input type="submit" name="k_install" value="Install"/>
-	    </cms:if>
-	</cms:form>
-    </cms:capture>
+    <div class="panel-heading simple-heading">CouchCMS</div>
+    <cms:form name="frm_login" class="simple-form" action="" method="post" anchor="0" onSubmit="this.k_install.disabled=true; return true;">
+        <cms:if k_success >
+            <cms:php> global $CTX; k_install( $CTX->get('frm_name'), $CTX->get('frm_password'), $CTX->get('frm_email') ); </cms:php>
 
-    <cms:if form_validated >
-	<cms:php> global $CTX; k_install( $CTX->get('acct_name'), $CTX->get('acct_pwd'), $CTX->get('acct_email') ); </cms:php>
-	<cms:if k_install_error >
-	    <div class="error">
-		<h3>Installation failed!</h3>
-		<cms:show k_install_error />
-	    </div>
-	<cms:else />
-	    <div class="success">
-		<h3>Installation successful!</h3>
-		Please <a href="<cms:php> echo K_ADMIN_URL . K_ADMIN_PAGE; </cms:php>"><b>login</b></a> using the information you provided.
-	    </div>
-	</cms:if>
-    <cms:else />
-	<cms:show my_form />
-    </cms:if>
+            <cms:if k_install_error >
+                <div class="alert alert-error alert-icon">
+                    <svg class="i"><use xlink:href="<cms:php>echo K_SYSTEM_THEME_URL;</cms:php>assets/open-iconic.svg#circle-x"></use></svg>
+                    <h2>Installation failed!</h2>
+                    <cms:show k_install_error />
+                </div>
+            <cms:else />
+                <div class="alert alert-success alert-icon">
+                    <svg class="i"><use xlink:href="<cms:php>echo K_SYSTEM_THEME_URL;</cms:php>assets/open-iconic.svg#check"></use></svg>
+                    <h2>Installation successful!</h2>
+                    Please <a href="<cms:php> echo K_ADMIN_URL . K_ADMIN_PAGE; </cms:php>">log in</a> using the information you provided.
+                </div>
+            </cms:if>
+        <cms:else />
+            <cms:if k_error >
+                <div class="alert alert-error alert-icon">
+                    <svg class="i"><use xlink:href="<cms:php>echo K_SYSTEM_THEME_URL;</cms:php>assets/open-iconic.svg#circle-x"></use></svg>
+                    <cms:each k_error >
+                        <cms:show item /><br/>
+                    </cms:each>
+                </div>
+            <cms:else />
+                <div class="alert alert-notice alert-icon">
+                    <svg class="i"><use xlink:href="<cms:php>echo K_SYSTEM_THEME_URL;</cms:php>assets/open-iconic.svg#warning"></use></svg>
+                    Installation required
+                </div>
+            </cms:if>
+
+            <div class="field prepend">
+                <cms:input type="text" id="k_user_name" name="name" maxlength="40"
+                    required="1" validator='title_ready|min_len=4'
+                    validator_msg='title_ready=Only lowercase characters, numerals, hyphen and underscore permitted'
+                    autofocus="autofocus" class="text" placeholder="Super-Admin Username" 'required="required"' value=""/>
+                <svg class="i"><use xlink:href="<cms:php>echo K_SYSTEM_THEME_URL;</cms:php>assets/open-iconic.svg#person"></use></svg>
+            </div>
+
+            <div class="field prepend">
+                <cms:input type="text" id="k_user_email" name="email" required='1' validator='email'
+                    class="text" placeholder="Email Address" 'required="required"' value=""/>
+                <svg class="i"><use xlink:href="<cms:php>echo K_SYSTEM_THEME_URL;</cms:php>assets/open-iconic.svg#envelope-closed"></use></svg>
+            </div>
+
+            <div class="field prepend">
+                <cms:input type="password" id="k_user_pwd" name="password" required="1" validator='min_len=5'
+                    autocorrect="off" autocapitalize="off" spellcheck="false" class="password" placeholder="Password" 'required="required"' value="" />
+                <svg class="i"><use xlink:href="<cms:php>echo K_SYSTEM_THEME_URL;</cms:php>assets/open-iconic.svg#lock-locked"></use></svg>
+            </div>
+
+            <div class="field prepend">
+                <cms:input type="password" id="k_user_pwd_repeat" name="repeat_password" required="1" validator='matches_field=password'
+                    autocorrect="off" autocapitalize="off" spellcheck="false" class="password" placeholder="Repeat Password" 'required="required"' value="" />
+                <svg class="i"><use xlink:href="<cms:php>echo K_SYSTEM_THEME_URL;</cms:php>assets/open-iconic.svg#lock-locked"></use></svg>
+            </div>
+
+            <div class="simple-btns">
+                <button class="btn btn-primary" name="k_install" type="submit"><svg class="i"><use xlink:href="<cms:php>echo K_SYSTEM_THEME_URL;</cms:php>assets/open-iconic.svg#check"></use></svg>Install</button>
+            </div>
+        </cms:if>
+    </cms:form>
 
     <?php echo $FUNCS->login_footer(); ?>
     <?php
@@ -605,6 +663,7 @@
     $html = ob_get_contents();
     ob_end_clean();
 
+    if( !defined('K_THEME_NAME') ) define( 'K_THEME_NAME', '' );
     $parser = new KParser( $html );
     echo $parser->get_HTML();
     die();

@@ -11,15 +11,15 @@
         var $lost_password_tpl;
         var $registration_tpl;
 
-        function KExtendedUsers(){
+        function __construct(){
             $this->populate_config();
         }
 
         function populate_config(){
 
             $t = array();
-            if( file_exists(K_COUCH_DIR.'addons/extended/config.php') ){
-                require_once( K_COUCH_DIR.'addons/extended/config.php' );
+            if( file_exists(K_ADDONS_DIR.'extended/config.php') ){
+                require_once( K_ADDONS_DIR.'extended/config.php' );
             }
             else{/*
                 die(
@@ -33,7 +33,7 @@
             unset( $t );
 
             $this->users_tpl = $this->t['users_tpl'];
-            $this->login_tpl = $this->t['login_tpl'];
+            $this->login_tpl = ( K_SITE_OFFLINE ) ? '' : $this->t['login_tpl'];
             $this->lost_password_tpl = $this->t['lost_password_tpl'];
             $this->registration_tpl = $this->t['registration_tpl'];
         }
@@ -140,7 +140,7 @@
         }
 
         function delete_custom_user_fields( &$user ){
-            global $FUNCS;
+            global $FUNCS, $KUSER;
 
             $pg = $this->_get_associated_page( $user );
             if( !$pg || $pg->id==-1 ) return;
@@ -156,7 +156,7 @@
         }
 
         function delete_user_account( &$pg ){
-            global $FUNCS;
+            global $FUNCS, $KUSER;
 
             if( $pg->tpl_name!=$this->users_tpl ){ return; }
 
@@ -208,7 +208,7 @@
                 </cms:editable>
                 </cms:ignore>
                 <cms:editable label='Extended-User ID' name='extended_user_id' search_type='integer' type='text'>0</cms:editable>
-                <cms:editable label='Extended-User Email' name='extended_user_email' type='text' />
+                <cms:editable label='Extended-User Email' name='extended_user_email' type='text' searchable='0' />
                 <cms:editable label='New Password' name='extended_user_password' type='dummy_password' />
                 <cms:editable label='Repeat New Password' name='extended_user_password_repeat' type='dummy_password' />
                 ";
@@ -737,7 +737,9 @@
             if( strlen($this->login_tpl) ){
                 if( $AUTH->user->id == -1 ){
                     if( !strlen($redirect) ){ $redirect = $_SERVER["REQUEST_URI"]; }
-                    $link = $FUNCS->get_link( $this->login_tpl ).'?redirect='.urlencode( $redirect );
+                    $link = $FUNCS->get_link( $this->login_tpl );
+                    $sep = ( strpos($link, '?')===false ) ? '?' : '&';
+                    $link .= $sep . 'redirect='.urlencode( $redirect );
                 }
                 else{
                     $link = 'javascript:void(0)';
@@ -752,7 +754,9 @@
                 if( $AUTH->user->id != -1 ){
                     $nonce = $FUNCS->create_nonce( 'logout'.$AUTH->user->id, $AUTH->user->name );
                     if( !strlen($redirect) ){ $redirect = $_SERVER["REQUEST_URI"]; }
-                    $link = $FUNCS->get_link( $this->login_tpl ).'?act=logout&nonce='.$nonce. '&redirect='.urlencode( $redirect );
+                    $link = $FUNCS->get_link( $this->login_tpl );
+                    $sep = ( strpos($link, '?')===false ) ? '?' : '&';
+                    $link .= $sep . 'act=logout&nonce='.$nonce. '&redirect='.urlencode( $redirect );
                 }
                 else{
                     $link = 'javascript:void(0)';
@@ -794,10 +798,9 @@
     // UDF for dummy password fields
     class KDummyPassword extends KUserDefinedField{
 
-        function _render( $input_name, $input_id, $extra='' ){
+        function _render( $input_name, $input_id, $extra='', $dynamic_insertion=0 ){
             $this->k_type = 'password';
-            return KField::_render( $input_name, $input_id, $extra ); // Calling grandparent statically! Not a bug: https://bugs.php.net/bug.php?id=42016
-            return $html;
+            return KField::_render( $input_name, $input_id, $extra, $dynamic_insertion ); // Calling grandparent statically! Not a bug: https://bugs.php.net/bug.php?id=42016
         }
 
         // Save to database

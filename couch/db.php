@@ -50,6 +50,7 @@
     define( 'K_TBL_COMMENTS', K_DB_TABLES_PREFIX . 'couch_comments' );
     define( 'K_TBL_RELATIONS', K_DB_TABLES_PREFIX . 'couch_relations' );
     define( 'K_TBL_ATTACHMENTS', K_DB_TABLES_PREFIX . 'couch_attachments' );
+    define( 'K_TBL_SUB_TEMPLATES', K_DB_TABLES_PREFIX . 'couch_sub_templates' );
 
 
     class KDB{
@@ -66,13 +67,15 @@
         var $ref = 0; // reference counting of transactions
 
         // debug
+        var $debug = 0;
         var $selects = 0;
         var $inserts = 0;
         var $updates = 0;
         var $deletes = 0;
         var $queries = 0;
+        var $query_time = 0;
 
-        function KDB( $host_name='', $database='', $user_name='', $password='' ){
+        function __construct( $host_name='', $database='', $user_name='', $password='' ){
             if( empty($host_name) ) $host_name = K_DB_HOST;
             if( empty($database) ) $database = K_DB_NAME;
             if( empty($user_name) ) $user_name = K_DB_USER;
@@ -108,7 +111,11 @@
                 if( !$this->connect() ) die( "Unable to connect to database. " . mysql_error() );
             }
 
+            $t=0;
+            if( $this->debug ){ $t = microtime(true); }
             $this->result = @mysql_query( $sql, $this->conn );
+            if( $this->debug ){ $this->query_time += (microtime(true) - $t); }
+
             if( !$this->result ){
                 //die( "Could not successfully run query (".$sql.") from DB: " . mysql_error() );
                 ob_end_clean();
@@ -142,12 +149,21 @@
             return $rows;
         }
 
-        function raw_select( $sql ){
+        function raw_select( $sql, $key='' ){
+            $key = trim( $key );
+
             $this->_query( $sql );
 
             $rows = array();
-            while( $row = mysql_fetch_assoc($this->result) ) {
-                $rows[] = $row;
+            if( $key ){
+                while( $row = mysql_fetch_assoc($this->result) ) {
+                    $rows[$row[$key]] = $row;
+                }
+            }
+            else{
+                while( $row = mysql_fetch_assoc($this->result) ) {
+                    $rows[] = $row;
+                }
             }
             mysql_free_result( $this->result );
 
@@ -234,5 +250,47 @@
             if( $this->ref==0|| $force ){
                 @mysql_query( "ROLLBACK", $this->conn );
             }
+        }
+
+        /*
+            Process level lock.
+            Returns 1 if lock obtained else 0
+            Obtained lock will be freed by either explictly calling 'release_lock'
+            or automatically when the PHP script ends
+            Note: locks are not released when transactions commit or roll back.
+        */
+        function get_lock( $name ){
+            $name = trim( $name );
+            if( $name=='' ) return 0;
+
+            if( !$this->is_free_lock($name) ) return 0;
+
+            $sql = "SELECT GET_LOCK('".$this->sanitize( $name )."', 0) AS lck";
+            $rs = $this->raw_select( $sql );
+            $ret = ( count($rs) ) ? $rs[0]['lck'] : 0;
+
+            return (int)$ret;
+        }
+
+        function release_lock( $name ){
+            $name = trim( $name );
+            if( $name=='' ) return 0;
+
+            $sql = "SELECT RELEASE_LOCK('".$this->sanitize( $name )."') AS lck";
+            $rs = $this->raw_select( $sql );
+            $ret = ( count($rs) ) ? $rs[0]['lck'] : 0;
+
+            return (int)$ret;
+        }
+
+        function is_free_lock( $name ){
+            $name = trim( $name );
+            if( $name=='' ) return 0;
+
+            $sql = "SELECT IS_FREE_LOCK('".$this->sanitize( $name )."') AS lck";
+            $rs = $this->raw_select( $sql );
+            $ret = ( count($rs) ) ? $rs[0]['lck'] : 0;
+
+            return (int)$ret;
         }
     }

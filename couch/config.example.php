@@ -97,7 +97,7 @@
     // 15.
     // By default the inbuilt php function 'mail()' is used to deliver messages.
     // On certain hosts this function might fail due to configuration problems.
-    // In such cases, set the following to '1' to use an alternative method to send emails
+    // In such cases, set the following to '1' to use an alternative method (phpMailer) to send emails
     define( 'K_USE_ALTERNATIVE_MTA', 0 );
 
     // 16.
@@ -148,6 +148,22 @@
     // Set the following to '1' if you wish to use KCFinder as the default file-browser (will require PHP5 and modern browsers)
     define( 'K_USE_KC_FINDER', 1 );
 
+    // 26.
+    // If the admin-panel uses a custom theme, set the following to the folder-name of the theme.
+    // Theme folder is expected to be within the 'couch/theme' folder. No leading or trailing slashes please.
+    //define( 'K_ADMIN_THEME', 'sample' );
+
+    // 27.
+    // Google reCAPTCHA API Keys.
+    // To use this captcha service, you need to sign up for an API key pair for your site.
+    // Please visit 'https://www.google.com/recaptcha/admin' to get the keys and enter them below.
+    define( 'K_RECAPTCHA_SITE_KEY', '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI' );
+    define( 'K_RECAPTCHA_SECRET_KEY', '6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe' );
+
+    // 28.
+    // Set this to '1' for gen_dump.php utilty to work with dump files of very large sizes
+    define( 'K_SQL_DUMP_USE_EXTENDED_INSERTS', 0 );
+
     // 99.
     // VERY IMPORTANT!
     // Set the following to '1' ONLY IF YOU HAVE BOUGHT A COMMERCIAL LICENSE for the site you are using this file on.
@@ -155,11 +171,11 @@
     define( 'K_PAID_LICENSE', 0 );
 
         // Rebranding. Uncomment the following defines and add your info.
-        // 99a. Company Logo on light background  (Max. 171 x 64 pixels. Needs to be placed within 'couch/theme/images/' folder)
-        //define( 'K_LOGO_LIGHT', 'couch.gif' );
+        // 99a. Company Logo on light background  (Multiple of [<= 450] x 57 pixels. Needs to be placed within 'couch/theme/images/' folder)
+        //define( 'K_LOGO_LIGHT', 'couch_light.png' );
 
-        // 99b. Company Logo on dark background  (Max. 171 x 64 pixels. Needs to be placed within 'couch/theme/images/' folder)
-        //define( 'K_LOGO_DARK', 'couch_dark.gif' );
+        // 99b. Company Logo on dark background  (Multiple of [<= 219] x 68 pixels. Needs to be placed within 'couch/theme/images/' folder)
+        //define( 'K_LOGO_DARK', 'couch_dark.png' );
 
         // 99c. Footer content (Company name and link)
         //define( 'K_ADMIN_FOOTER', '<a href="http://www.yourcompany.com">COMPANY NAME</a>' );
@@ -169,12 +185,13 @@
     // If you wish to use this software under the free open source license, it is mandatory to have an attribution link
     // on all pages rendered by the software. By default, a footer link will be automatically added if you do not
     // have a commercial license for the site this file is being used on.
+    //
     // Set the following to '1' if you want to prevent the link from being automatically added.
     // You are, however, then REQUIRED to manually add the following link in the output of all pages rendered by this software.
     // You are free to style the link in any manner so long as it remains legible and unobscured.
     //
     // <div id="copyright">Powered by
-    // <a href="http://www.couchcms.com/" title="CouchCMS - Simple Open-Source Content Management">CouchCMS</a></div>
+    // <a href="https://www.couchcms.com/" title="CouchCMS - Simple Open-Source Content Management">CouchCMS</a></div>
     //
     // Failing to do so will constitute a violation of the CPAL license this software is provided under.
     define( 'K_REMOVE_FOOTER_LINK', 0 );

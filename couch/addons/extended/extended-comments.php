@@ -3,7 +3,7 @@
 
 
     class KExtendedComments{
-        function add_template_params( &$attr_custom, $params, $node ){
+        static function add_template_params( &$attr_custom, $params, $node ){
             global $FUNCS;
 
             $attr = $FUNCS->get_named_vars(
@@ -19,7 +19,7 @@
 
         }
 
-        function &_get_associated_page( &$comment ){
+        static function &_get_associated_page( &$comment ){
             global $FUNCS, $DB;
 
             if( isset($comment->_assoc_page) ) return $comment->_assoc_page;
@@ -64,7 +64,7 @@
             return $comment->_assoc_page;
         }
 
-        function _get_comment_masterpage( $tpl_name ){
+        static function _get_comment_masterpage( $tpl_name ){
             global $FUNCS, $DB;
 
             if( array_key_exists( $tpl_name, $FUNCS->cached_templates ) ){
@@ -88,7 +88,7 @@
             return $custom_params['comment_masterpage'];
         }
 
-        function add_custom_comment_fields( &$fields, &$comment ){
+        static function add_custom_comment_fields( &$fields, &$comment ){
             global $FUNCS, $DB, $CTX;
 
 
@@ -110,7 +110,7 @@
 
         }
 
-        function update_custom_comment_fields( &$comment, &$errors ){
+        static function update_custom_comment_fields( &$comment, &$errors ){
             global $FUNCS, $DB;
 
             $pg = KExtendedComments::_get_associated_page( $comment );
@@ -131,7 +131,7 @@
         //    This will save you the hassle of rendering the fields.
         // 3. Specify a fields value directly as cms:process_comment tag's parameter.
         //
-        function insert_custom_comment_fields( $comment_id, $arr_insert, &$approved, $params, $node ){
+        static function insert_custom_comment_fields( $comment_id, $arr_insert, &$approved, $params, $node ){
             global $FUNCS, $DB, $CTX;
 
             require_once( K_COUCH_DIR.'comment.php' );
@@ -139,7 +139,7 @@
             $FUNCS->remove_event_listener( 'alter_comment_fields_info', array('KExtendedComments', 'add_custom_comment_fields') );
             $comment = new KComment( $comment_id );
 
-            $pg = &$CTX->get_object( 'bound_page', 'form' ); // is the form data-bound?
+            $pg = &$CTX->get_object( 'k_bound_page', 'form' ); // is the form data-bound?
             if( is_null($pg) ){
                 $pg = KExtendedComments::_get_associated_page( $comment );
                 if( !$pg ) return;
@@ -222,7 +222,7 @@
 
         }
 
-        function delete_custom_comment_fields( &$comment ){
+        static function delete_custom_comment_fields( &$comment ){
 
             $pg = KExtendedComments::_get_associated_page( $comment );
             if( !$pg || $pg->id==-1 ) return;
@@ -235,7 +235,7 @@
 
         }
 
-        function set_custom_fields_in_context( $rec, $mode ){
+        static function set_custom_fields_in_context( $rec, $mode ){
             global $FUNCS, $CTX, $DB;
 
             if( $mode==2 ){ //Comments

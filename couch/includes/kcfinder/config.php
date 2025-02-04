@@ -48,7 +48,14 @@ $_CONFIG = array(
         )
     ),
 
-    'deniedExts' => "exe com msi bat php phps phtml php3 php4 cgi pl",
+    'deniedExts' => "exe com msi bat php phps phtml php3 php4 pht cgi pl",
+
+    'allowedExts' => array(
+        'file'   =>  "7z aiff asf avi bmp csv doc docx fla flv gif gz gzip jpeg jpg mid mov mp3 mp4 mpc mpeg mpg ods odt pdf png ppt pptx pxd qt ram rar rm rmi rmvb rtf sdc sitd svg swf sxc sxw tar tgz tif tiff txt vsd wav webm wma wmv xls xlsx xml zip",
+        'flash'   =>  "swf",
+        'image'  =>  "jpg jpeg png gif",
+        'media'   =>  "swf flv avi mpg mpeg qt mov wmv asf rm",
+    ),
 
     'types' => array(
 
@@ -101,6 +108,8 @@ $_CONFIG = array(
     //'_sessionPath' => "/my/path",
 
     'ChmodOnUpload' => "1",
+
+    'useExplicitPath' => false,
 );
 
 ?>

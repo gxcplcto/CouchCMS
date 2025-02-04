@@ -58,10 +58,10 @@
                                 'mark', 'nav', 'rp', 'rt', 'ruby', 'section', 'summary', 'time', 'wbr'
                                 );
 
-        function KHTMLNode( $type, $name='', $attr='', $text='', $cleanXSS=0, $for_comments=0, $safe_tags=null ){
+        function __construct( $type, $name='', $attr='', $text='', $cleanXSS=0, $for_comments=0, $safe_tags=null ){
             global $FUNCS;
 
-            if( $name{0}=='/' ){
+            if( $name[0]=='/' ){
                 $this->is_end_tag = 1;
                 $name = trim( substr($name, 1) );
             }
@@ -115,7 +115,7 @@
                 }
             }
 
-            parent::KNode($type, $name, $attr, $text );
+            parent::__construct($type, $name, $attr, $text );
         }
 
         function normalize_entities( $str ){
@@ -126,21 +126,22 @@
                 // replace literal entities
                 $str = html_entity_decode( $str, ENT_QUOTES, K_CHARSET );
 
+                // replace dangerous HTML5 entities
+                $str = str_ireplace( array('&colon;', '&lpar;', '&rpar;', '&newline;', '&tab;'), array(':', '(', ')', "\n", "\t"), $str );
+
                 // replace numeric entities
                 $str = preg_replace_callback( '~&#x0{0,8}([0-9A-F]+);?~i',
-                                                create_function(
-                                                    '$matches',
-                                                    '$val = hexdec($matches[1]);
-                                                    return ( $val < 128 ) ? chr($val) : $matches[0];'
-                                                ),
+                                                function($matches){
+                                                    $val = hexdec($matches[1]);
+                                                    return ( $val < 128 ) ? chr($val) : $matches[0];
+                                                },
                                                 $str );
 
                 $str = preg_replace_callback( '~&#0{0,8}([0-9]+);?~i',
-                                                create_function(
-                                                    '$matches',
-                                                    '$val = $matches[1];
-                                                    return ( $val < 128 ) ? chr($val) : $matches[0];'
-                                                ),
+                                                function($matches){
+                                                    $val = $matches[1];
+                                                    return ( $val < 128 ) ? chr($val) : $matches[0];
+                                                },
                                                 $str );
                 $str = stripcslashes( $str );
 
@@ -180,6 +181,7 @@
 
             // invalidate other dangerous words
             // https://www.owasp.org/index.php/XSS_Filter_Evasion_Cheat_Sheet
+            // https://gist.github.com/kurobeats/9a613c9ab68914312cbb415134795b45
             $ra2 = array(
                  'fscommand', 'onabort', 'onactivate', 'onafterprint', 'onafterupdate', 'onbeforeactivate',
                  'onbeforecopy', 'onbeforecut', 'onbeforedeactivate', 'onbeforeeditfocus',
@@ -202,6 +204,11 @@
                  'document.cookie', 'document.write', 'window.location', 'document.location',
                  'datafld', 'dataformatas', 'datasrc', 'binding', 'behavior',
                  'onformchange', 'onforminput', 'formaction', 'oninput', 'dirname', 'pattern', 'mhtml:',
+                 'onhashchange', 'onmessage', 'onoffline', 'ononline', 'onpagehide', 'onpageshow', 'onpopstate', 'onstorage', 'onundo', 'onredo',
+                 'oninvalid', 'onsearch', 'onwheel', 'oncanplay', 'oncuechange', 'ondurationchange', 'onemptied', 'onplay', 'onratechange',
+                 'onstalled', 'onsuspend', 'ontimeupdate', 'onvolumechange', 'onwaiting', 'onshow', 'ontoggle',
+                 'onanimation', 'onauxclick', 'onfullscreen', 'ongotpointercapture', 'onlostpointercapture', 'onpointer', 'onorientationchange',
+                 'ontouch', 'ontransition', 'onvisibilitychange', 'onwebkit', 'onmoz',
                  );
 
             for( $i = 0; $i < count($ra2); $i++ ){
@@ -250,7 +257,7 @@
             return $html;
         }
 
-        function get_info(){
+        function get_info( $level=0 ){
             return;
         }
 
@@ -297,7 +304,7 @@
                         'tr','tt','u','ul','var'
                         );
 
-        function KHTMLParser( $str, $ignore_tags=null, $cleanXSS=0, $for_comments=0, $allowed_html_tags='' ){
+        function __construct( $str, $ignore_tags=null, $cleanXSS=0, $for_comments=0, $allowed_html_tags='' ){
             $this->str = $str;
             $this->state = K_STATE_TEXT;
             $this->stack = array();
